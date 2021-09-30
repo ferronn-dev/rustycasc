@@ -69,7 +69,9 @@ async fn main() -> Result<()> {
             version[2..4].to_string(),
             version
         );
-        Result::<String>::Ok(client.get(url).send().await?.text().await?)
+        let buildinfo = client.get(url).send().await?.text().await?;
+        assert_eq!(version, format!("{:x}", md5::compute(&buildinfo)));
+        Result::<String>::Ok(buildinfo)
     };
     println!("{}", get_buildinfo().await?);
     Ok(())
