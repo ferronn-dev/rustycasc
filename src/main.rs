@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
             .to_string();
         Result::Ok((build, cdn))
     };
-    let get_cdn = || async move {
+    let get_cdn_fetcher = || async move {
         let info = fetch("cdns").await?;
         let cdn = parse_info(&info)
             .into_iter()
@@ -62,27 +62,29 @@ async fn main() -> Result<()> {
             .ok_or("missing us cdn hosts")?
             .split(" ")
             .next()
-            .unwrap()
-            .to_string();
-        let path = cdn.get("Path").ok_or("missing us cdn path")?.to_string();
-        Result::Ok((host, path))
+            .unwrap();
+        let path = cdn.get("Path").ok_or("missing us cdn path")?;
+        let prefix = format!("http://{}/{}", host, path);
+        // TODO figure out how to use the same client as above.
+        let client = reqwest::Client::new();
+        Result::Ok(move |tag: String, hash: String| async move {
+            let url = format!(
+                "{}/{}/{}/{}/{}",
+                prefix,
+                tag,
+                hash[0..2].to_string(),
+                hash[2..4].to_string(),
+                hash
+            );
+            let data = client.get(url).send().await?.text().await?;
+            assert_eq!(hash, format!("{:x}", md5::compute(&data)));
+            Result::Ok(data)
+        })
     };
     let get_buildinfo = || async move {
-        let (version, cdn) = futures::join!(get_version(), get_cdn());
-        let build = version?.0;
-        let (host, path) = cdn?;
-        let url = format!(
-            "http://{}/{}/config/{}/{}/{}",
-            host,
-            path,
-            build[0..2].to_string(),
-            build[2..4].to_string(),
-            build
-        );
-        let buildinfo = client.get(url).send().await?.text().await?;
-        assert_eq!(build, format!("{:x}", md5::compute(&buildinfo)));
+        let (version, cdn_fetcher) = futures::join!(get_version(), get_cdn_fetcher());
         Result::Ok(
-            parse_config(&buildinfo)
+            parse_config(&cdn_fetcher?("config".to_string(), version?.0).await?)
                 .get("encoding")
                 .ok_or("missing encoding in buildinfo")?
                 .to_string(),
