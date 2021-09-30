@@ -1,22 +1,22 @@
 use std::collections::HashMap;
 
 fn parse_info(s: String) -> Vec<HashMap<String, String>> {
-    let ts = |x: &str| x.to_string();
-    let parts = |x: String| x.split("|").map(ts).collect::<Vec<String>>();
-    let lines = s.lines().map(ts).collect::<Vec<String>>();
-    let tags = parts(lines[0].clone())
-        .into_iter()
-        .map(|x| x.split("!").next().unwrap().to_string())
-        .collect::<Vec<String>>();
+    let lines = s
+        .lines()
+        .map(|x| x.split("|").collect())
+        .collect::<Vec<Vec<&str>>>();
+    let tags = lines[0]
+        .iter()
+        .map(|x| x.split("!").next().unwrap())
+        .collect::<Vec<&str>>();
     lines
         .into_iter()
         .skip(2)
-        .map(parts)
         .map(|v| {
             v.into_iter()
                 .enumerate()
                 .fold(HashMap::new(), |mut acc, (i, x)| {
-                    acc.entry(tags[i].clone()).or_insert(x.clone());
+                    acc.entry(tags[i].to_string()).or_insert(x.to_string());
                     acc
                 })
         })
