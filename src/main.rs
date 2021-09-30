@@ -65,8 +65,6 @@ async fn main() -> Result<()> {
             .unwrap();
         let path = cdn.get("Path").ok_or("missing us cdn path")?;
         let prefix = format!("http://{}/{}", host, path);
-        // TODO figure out how to use the same client as above.
-        let client = reqwest::Client::new();
         Result::Ok(move |tag: String, hash: String| async move {
             let url = format!(
                 "{}/{}/{}/{}/{}",
