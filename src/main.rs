@@ -17,6 +17,10 @@ fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
         .collect()
 }
 
+fn parse_config(s: &str) -> HashMap<&str, &str> {
+    s.lines().filter_map(|x| x.split_once(" = ")).collect()
+}
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
@@ -32,7 +36,7 @@ async fn main() -> Result<()> {
             .await
     };
     let get_version = || async move {
-        Result::<String>::Ok(
+        Result::Ok(
             parse_info(&fetch("versions").await?)
                 .into_iter()
                 .find(|m| m["Region"] == "us")
@@ -55,7 +59,7 @@ async fn main() -> Result<()> {
             .next()
             .unwrap();
         let path = cdn.remove("Path").ok_or("missing us cdn path")?;
-        Result::<(String, String)>::Ok((host.to_string(), path.to_string()))
+        Result::Ok((host.to_string(), path.to_string()))
     };
     let get_buildinfo = || async move {
         let (version, cdn) = futures::join!(get_version(), get_cdn());
@@ -71,9 +75,14 @@ async fn main() -> Result<()> {
         );
         let buildinfo = client.get(url).send().await?.text().await?;
         assert_eq!(version, format!("{:x}", md5::compute(&buildinfo)));
-        Result::<String>::Ok(buildinfo)
+        Result::Ok(
+            parse_config(&buildinfo)
+                .get("encoding")
+                .ok_or("missing encoding in buildinfo")?
+                .to_string(),
+        )
     };
-    println!("{}", get_buildinfo().await?);
+    println!("{:?}", get_buildinfo().await?);
     Ok(())
 }
 
@@ -96,6 +105,18 @@ mod tests {
         ];
         for (name, input, output) in tests {
             assert_eq!(super::parse_info(input), output, "{}", name);
+        }
+    }
+
+    #[test]
+    fn test_parse_config() {
+        let tests = [
+            ("empty string", "", m! {}),
+            ("space", " ", m! {}),
+            ("one field", "foo\n\nbar = baz\nx=y", m! {"bar":"baz"}),
+        ];
+        for (name, input, output) in tests {
+            assert_eq!(super::parse_config(input), output, "{}", name);
         }
     }
 }
