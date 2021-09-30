@@ -36,45 +36,51 @@ async fn main() -> Result<()> {
             .await
     };
     let get_version = || async move {
-        Result::Ok(
-            parse_info(&fetch("versions").await?)
-                .into_iter()
-                .find(|m| m["Region"] == "us")
-                .ok_or("missing us version")?
-                .remove("BuildConfig")
-                .ok_or("missing us build config version")?
-                .to_string(),
-        )
+        let info = fetch("versions").await?;
+        let version = parse_info(&info)
+            .into_iter()
+            .find(|m| m["Region"] == "us")
+            .ok_or("missing us version")?;
+        let build = version
+            .get("BuildConfig")
+            .ok_or("missing us build config version")?
+            .to_string();
+        let cdn = version
+            .get("CDNConfig")
+            .ok_or("missing us cdn config version")?
+            .to_string();
+        Result::Ok((build, cdn))
     };
     let get_cdn = || async move {
         let info = fetch("cdns").await?;
-        let mut cdn = parse_info(&info)
+        let cdn = parse_info(&info)
             .into_iter()
             .find(|m| m["Name"] == "us")
             .ok_or("missing us cdn")?;
         let host = cdn
-            .remove("Hosts")
+            .get("Hosts")
             .ok_or("missing us cdn hosts")?
             .split(" ")
             .next()
-            .unwrap();
-        let path = cdn.remove("Path").ok_or("missing us cdn path")?;
-        Result::Ok((host.to_string(), path.to_string()))
+            .unwrap()
+            .to_string();
+        let path = cdn.get("Path").ok_or("missing us cdn path")?.to_string();
+        Result::Ok((host, path))
     };
     let get_buildinfo = || async move {
         let (version, cdn) = futures::join!(get_version(), get_cdn());
+        let build = version?.0;
         let (host, path) = cdn?;
-        let version = version?;
         let url = format!(
             "http://{}/{}/config/{}/{}/{}",
             host,
             path,
-            version[0..2].to_string(),
-            version[2..4].to_string(),
-            version
+            build[0..2].to_string(),
+            build[2..4].to_string(),
+            build
         );
         let buildinfo = client.get(url).send().await?.text().await?;
-        assert_eq!(version, format!("{:x}", md5::compute(&buildinfo)));
+        assert_eq!(build, format!("{:x}", md5::compute(&buildinfo)));
         Result::Ok(
             parse_config(&buildinfo)
                 .get("encoding")
