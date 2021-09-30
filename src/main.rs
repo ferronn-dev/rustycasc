@@ -1,24 +1,19 @@
 use std::collections::HashMap;
 
 fn parse_info(s: String) -> Vec<HashMap<String, String>> {
-    let lines = s
-        .lines()
-        .map(|x| x.split("|").collect())
-        .collect::<Vec<Vec<&str>>>();
-    let tags = lines[0]
-        .iter()
+    let mut lines = s.lines().map(|x| x.split("|"));
+    let tags = lines
+        .next()
+        .unwrap()
         .map(|x| x.split("!").next().unwrap())
         .collect::<Vec<&str>>();
     lines
-        .into_iter()
-        .skip(2)
+        .skip(1)
         .map(|v| {
-            v.into_iter()
-                .enumerate()
-                .fold(HashMap::new(), |mut acc, (i, x)| {
-                    acc.entry(tags[i].to_string()).or_insert(x.to_string());
-                    acc
-                })
+            v.enumerate().fold(HashMap::new(), |mut acc, (i, x)| {
+                acc.entry(tags[i].to_string()).or_insert(x.to_string());
+                acc
+            })
         })
         .collect()
 }
