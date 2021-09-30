@@ -13,10 +13,10 @@ fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
         .collect()
 }
 
-type Error = Box<dyn std::error::Error>;
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<()> {
     let base = "http://us.patch.battle.net:1119/wow_classic_era";
     let ref client = reqwest::Client::new();
     let fetch = |path| async move {
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Error> {
             .await
     };
     let get_version = || async move {
-        Ok::<String, Error>(
+        Result::<String>::Ok(
             parse_info(&fetch("versions").await?)
                 .into_iter()
                 .find(|m| m["Region"] == "us")
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Error> {
             .next()
             .unwrap();
         let path = cdn.remove("Path").ok_or("missing us cdn path")?;
-        Ok::<(String, String), Error>((host.to_string(), path.to_string()))
+        Result::<(String, String)>::Ok((host.to_string(), path.to_string()))
     };
     let (version, cdn) = futures::join!(get_version(), get_cdn());
     let (host, path) = cdn?;
