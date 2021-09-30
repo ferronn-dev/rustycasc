@@ -58,3 +58,12 @@ async fn main() -> Result<(), Error> {
     println!("{} {} {}", version?, host, path);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[should_panic]
+    fn test_parse_info() {
+        super::parse_info("");
+    }
+}
