@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-fn parse_info(s: String) -> Vec<HashMap<String, String>> {
+fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     let mut lines = s.lines().map(|x| x.split("|"));
     let tags = lines
         .next()
@@ -9,12 +9,7 @@ fn parse_info(s: String) -> Vec<HashMap<String, String>> {
         .collect::<Vec<&str>>();
     lines
         .skip(1)
-        .map(|v| {
-            tags.iter()
-                .zip(v)
-                .map(|(t, x)| (t.to_string(), x.to_string()))
-                .collect()
-        })
+        .map(|v| tags.iter().map(|x| *x).zip(v).collect())
         .collect()
 }
 
@@ -34,16 +29,18 @@ async fn main() -> Result<(), Error> {
     };
     let get_version = || async move {
         Ok::<String, Error>(
-            parse_info(fetch("versions").await?)
+            parse_info(&fetch("versions").await?)
                 .into_iter()
                 .find(|m| m["Region"] == "us")
                 .ok_or("missing us version")?
                 .remove("BuildConfig")
-                .ok_or("missing us build config version")?,
+                .ok_or("missing us build config version")?
+                .to_string(),
         )
     };
     let get_cdn = || async move {
-        let mut cdn = parse_info(fetch("cdns").await?)
+        let info = fetch("cdns").await?;
+        let mut cdn = parse_info(&info)
             .into_iter()
             .find(|m| m["Name"] == "us")
             .ok_or("missing us cdn")?;
@@ -52,10 +49,9 @@ async fn main() -> Result<(), Error> {
             .ok_or("missing us cdn hosts")?
             .split(" ")
             .next()
-            .unwrap()
-            .to_string();
+            .unwrap();
         let path = cdn.remove("Path").ok_or("missing us cdn path")?;
-        Ok::<(String, String), Error>((host, path))
+        Ok::<(String, String), Error>((host.to_string(), path.to_string()))
     };
     let (version, cdn) = futures::join!(get_version(), get_cdn());
     let (host, path) = cdn?;
