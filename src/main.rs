@@ -10,8 +10,8 @@ fn parse_info(s: String) -> Vec<HashMap<String, String>> {
     lines
         .skip(1)
         .map(|v| {
-            v.enumerate().fold(HashMap::new(), |mut acc, (i, x)| {
-                acc.entry(tags[i].to_string()).or_insert(x.to_string());
+            v.zip(tags.iter()).fold(HashMap::new(), |mut acc, (x, t)| {
+                acc.entry(t.to_string()).or_insert(x.to_string());
                 acc
             })
         })
