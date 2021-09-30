@@ -18,8 +18,10 @@ fn parse_info(s: String) -> Vec<HashMap<String, String>> {
         .collect()
 }
 
+type Error = Box<dyn std::error::Error>;
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Error> {
     let base = "http://us.patch.battle.net:1119/wow_classic_era";
     let ref client = reqwest::Client::new();
     let fetch = |path| async move {
@@ -30,8 +32,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .text()
             .await
     };
-    let (versions, cdns) = futures::join!(fetch("versions"), fetch("cdns"));
-    println!("{:#?}", parse_info(versions?));
-    println!("{:#?}", parse_info(cdns?));
+    let get_version = || async move {
+        Ok::<String, Error>(
+            parse_info(fetch("versions").await?)
+                .into_iter()
+                .find(|m| m["Region"] == "us")
+                .ok_or("missing us version")?
+                .remove("BuildConfig")
+                .ok_or("missing us build config version")?,
+        )
+    };
+    let get_cdn = || async move {
+        Ok::<String, Error>(
+            parse_info(fetch("cdns").await?)
+                .into_iter()
+                .find(|m| m["Name"] == "us")
+                .ok_or("missing us cdn")?
+                .remove("Hosts")
+                .ok_or("missing us cdn hosts")?
+                .split(" ")
+                .next()
+                .unwrap()
+                .to_string(),
+        )
+    };
+    let (version, cdn) = futures::join!(get_version(), get_cdn());
+    println!("{} {}", version?, cdn?);
     Ok(())
 }
