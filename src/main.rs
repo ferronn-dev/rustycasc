@@ -43,20 +43,22 @@ async fn main() -> Result<(), Error> {
         )
     };
     let get_cdn = || async move {
-        Ok::<String, Error>(
-            parse_info(fetch("cdns").await?)
-                .into_iter()
-                .find(|m| m["Name"] == "us")
-                .ok_or("missing us cdn")?
-                .remove("Hosts")
-                .ok_or("missing us cdn hosts")?
-                .split(" ")
-                .next()
-                .unwrap()
-                .to_string(),
-        )
+        let mut cdn = parse_info(fetch("cdns").await?)
+            .into_iter()
+            .find(|m| m["Name"] == "us")
+            .ok_or("missing us cdn")?;
+        let host = cdn
+            .remove("Hosts")
+            .ok_or("missing us cdn hosts")?
+            .split(" ")
+            .next()
+            .unwrap()
+            .to_string();
+        let path = cdn.remove("Path").ok_or("missing us cdn path")?;
+        Ok::<(String, String), Error>((host, path))
     };
     let (version, cdn) = futures::join!(get_version(), get_cdn());
-    println!("{} {}", version?, cdn?);
+    let (host, path) = cdn?;
+    println!("{} {} {}", version?, host, path);
     Ok(())
 }
