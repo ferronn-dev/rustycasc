@@ -57,9 +57,21 @@ async fn main() -> Result<()> {
         let path = cdn.remove("Path").ok_or("missing us cdn path")?;
         Result::<(String, String)>::Ok((host.to_string(), path.to_string()))
     };
-    let (version, cdn) = futures::join!(get_version(), get_cdn());
-    let (host, path) = cdn?;
-    println!("{} {} {}", version?, host, path);
+    let get_buildinfo = || async move {
+        let (version, cdn) = futures::join!(get_version(), get_cdn());
+        let (host, path) = cdn?;
+        let version = version?;
+        let url = format!(
+            "http://{}/{}/config/{}/{}/{}",
+            host,
+            path,
+            version[0..2].to_string(),
+            version[2..4].to_string(),
+            version
+        );
+        Result::<String>::Ok(client.get(url).send().await?.text().await?)
+    };
+    println!("{}", get_buildinfo().await?);
     Ok(())
 }
 
@@ -73,11 +85,12 @@ mod tests {
         let tests = [
             ("empty string", "", v![]),
             ("space", " ", v![]),
-            ("one field", "moo\n\ncow", v![m!{"moo":"cow"}]),
-            ("several fields", "f1!x|f2!y\n\nv11|v12\nv21|v22", v![
-                m!{"f1":"v11", "f2":"v12"},
-                m!{"f1":"v21", "f2":"v22"},
-            ])
+            ("one field", "moo\n\ncow", v![m! {"moo":"cow"}]),
+            (
+                "several fields",
+                "f1!x|f2!y\n\nv11|v12\nv21|v22",
+                v![m! {"f1":"v11", "f2":"v12"}, m! {"f1":"v21", "f2":"v22"},],
+            ),
         ];
         for (name, input, output) in tests {
             assert_eq!(super::parse_info(input), output, "{}", name);
