@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
+    if s == "" {
+        // Empty string special case because lines() returns an empty iterator.
+        return vec![];
+    }
     let mut lines = s.lines().map(|x| x.split("|"));
     let tags = lines
         .next()
@@ -61,9 +65,18 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use velcro::hash_map as m;
+    use velcro::vec as v;
+
     #[test]
-    #[should_panic]
     fn test_parse_info() {
-        super::parse_info("");
+        let tests = [
+            ("empty string", "", v![]),
+            ("space", " ", v![]),
+            ("one field", "moo\n\ncow", v![m!{"moo": "cow"}]),
+        ];
+        for (name, input, output) in tests {
+            assert_eq!(super::parse_info(input), output, "{}", name);
+        }
     }
 }

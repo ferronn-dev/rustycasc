@@ -9,3 +9,6 @@ edition = "2018"
 futures = "*"
 reqwest = "*"
 tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+velcro = "*"
