@@ -73,7 +73,11 @@ mod tests {
         let tests = [
             ("empty string", "", v![]),
             ("space", " ", v![]),
-            ("one field", "moo\n\ncow", v![m!{"moo": "cow"}]),
+            ("one field", "moo\n\ncow", v![m!{"moo":"cow"}]),
+            ("several fields", "f1!x|f2!y\n\nv11|v12\nv21|v22", v![
+                m!{"f1":"v11", "f2":"v12"},
+                m!{"f1":"v21", "f2":"v22"},
+            ])
         ];
         for (name, input, output) in tests {
             assert_eq!(super::parse_info(input), output, "{}", name);
