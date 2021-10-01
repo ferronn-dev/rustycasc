@@ -87,8 +87,8 @@ async fn main() -> Result<()> {
                 "{}/{}/{}/{}/{}",
                 prefix,
                 tag,
-                hash[0..2].to_string(),
-                hash[2..4].to_string(),
+                &hash[0..2],
+                &hash[2..4],
                 hash
             );
             let data = fetch(url).await?;
