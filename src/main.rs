@@ -121,28 +121,22 @@ async fn main() -> Result<()> {
     };
     let cdninfo = async {
         let (version, cdn_fetch) = futures::join!(version.clone(), cdn_fetch.clone());
-        Result::Ok(
-            parse_config(&utf8(&*cdn_fetch?("config", version?.1).await?)?)
-                .get("archives")
-                .ok_or("missing archives in cdninfo")?
-                .split(" ")
-                .count(),
-        )
+        let _archives = parse_config(&utf8(&*cdn_fetch?("config", version?.1).await?)?)
+            .get("archives")
+            .ok_or("missing archives in cdninfo")?
+            .split(" ")
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+        Result::Ok(())
     };
     let encoding = async {
         let (buildinfo, cdn_fetch) = futures::join!(buildinfo, cdn_fetch.clone());
-        let data = cdn_fetch?("data", buildinfo?.remove(1)).await?;
-        Result::Ok(data.len())
+        let _data = cdn_fetch?("data", buildinfo?.remove(1)).await?;
+        Result::Ok(())
     };
-    let (_, _) = futures::join!(
-        encoding.inspect(|x| if x.is_ok() {
-            println!("{:?}", x.as_ref().unwrap())
-        }),
-        cdninfo.inspect(|x| if x.is_ok() {
-            println!("{:?}", x.as_ref().unwrap())
-        }),
-    );
-    Ok(())
+    let _ = cdninfo.await?;
+    let _ = encoding.await?;
+    Result::Ok(())
 }
 
 #[cfg(test)]
