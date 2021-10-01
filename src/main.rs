@@ -95,7 +95,9 @@ async fn main() -> Result<()> {
             parse_config(&cdn_fetch?("config", version?.0).await?)
                 .get("encoding")
                 .ok_or("missing encoding in buildinfo")?
-                .to_string(),
+                .split(" ")
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>(),
         )
     };
     let cdninfo = async {
@@ -104,7 +106,9 @@ async fn main() -> Result<()> {
             parse_config(&cdn_fetch?("config", version?.1).await?)
                 .get("archives")
                 .ok_or("missing archives in cdninfo")?
-                .to_string(),
+                .split(" ")
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>(),
         )
     };
     let (_, _) = futures::join!(
