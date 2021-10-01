@@ -41,9 +41,9 @@ type Result<T> = std::result::Result<T, Error>;
 #[tokio::main]
 async fn main() -> Result<()> {
     let patch_base = "http://us.patch.battle.net:1119/wow_classic_era";
-    let ref client = reqwest::Client::new();
-    let fetch = |url| async move { client.get(url).send().await?.text().await };
-    let version = async move {
+    let client = reqwest::Client::new();
+    let fetch = |url| async { client.get(url).send().await?.text().await };
+    let version = async {
         let info = fetch(format!("{}/versions", patch_base)).await?;
         let version = parse_info(&info)
             .into_iter()
@@ -58,8 +58,9 @@ async fn main() -> Result<()> {
             .ok_or("missing us cdn config version")?
             .to_string();
         Result::Ok((build, cdn))
-    };
-    let cdn_fetch = async move {
+    }
+    .shared();
+    let cdn_fetch = async {
         let info = fetch(format!("{}/cdns", patch_base)).await?;
         let cdn = parse_info(&info)
             .into_iter()
@@ -88,8 +89,8 @@ async fn main() -> Result<()> {
         })
     }
     .shared();
-    let buildinfo = async move {
-        let (version, cdn_fetch) = futures::join!(version, cdn_fetch.clone());
+    let buildinfo = async {
+        let (version, cdn_fetch) = futures::join!(version.clone(), cdn_fetch.clone());
         Result::Ok(
             parse_config(&cdn_fetch?("config", version?.0).await?)
                 .get("encoding")
@@ -97,7 +98,23 @@ async fn main() -> Result<()> {
                 .to_string(),
         )
     };
-    println!("{:?}", buildinfo.await?);
+    let cdninfo = async {
+        let (version, cdn_fetch) = futures::join!(version.clone(), cdn_fetch.clone());
+        Result::Ok(
+            parse_config(&cdn_fetch?("config", version?.1).await?)
+                .get("archives")
+                .ok_or("missing archives in cdninfo")?
+                .to_string(),
+        )
+    };
+    let (_, _) = futures::join!(
+        buildinfo.inspect(|x| if x.is_ok() {
+            println!("{:?}", x.as_ref().unwrap())
+        }),
+        cdninfo.inspect(|x| if x.is_ok() {
+            println!("{:?}", x.as_ref().unwrap())
+        }),
+    );
     Ok(())
 }
 
