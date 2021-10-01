@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
             let cache_file = format!("cache/{}.{}", tag, hash);
             let cached = std::fs::read(cache_file);
             if cached.is_ok() {
-                return Result::Ok(bytes::Bytes::copy_from_slice(cached.unwrap().as_slice()));
+                return Result::Ok(bytes::Bytes::from(cached.unwrap()));
             }
             let url = format!(
                 "{}/{}/{}/{}/{}",
