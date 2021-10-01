@@ -31,6 +31,11 @@ impl From<reqwest::Error> for Error {
         Error::E("http error")
     }
 }
+impl From<std::str::Utf8Error> for Error {
+    fn from(_: std::str::Utf8Error) -> Self {
+        Error::E("utf8 error")
+    }
+}
 impl From<&'static str> for Error {
     fn from(s: &'static str) -> Self {
         Error::E(s)
@@ -42,10 +47,12 @@ type Result<T> = std::result::Result<T, Error>;
 async fn main() -> Result<()> {
     let patch_base = "http://us.patch.battle.net:1119/wow_classic_era";
     let client = reqwest::Client::new();
-    let fetch = |url| async { client.get(url).send().await?.text().await };
+    let fetch = |url| async { Result::Ok(client.get(url).send().await?.bytes().await?) };
+    let utf8 = std::str::from_utf8;
     let version = async {
-        let info = fetch(format!("{}/versions", patch_base)).await?;
-        let version = parse_info(&info)
+        let bytes = fetch(format!("{}/versions", patch_base)).await?;
+        let info = utf8(&*bytes)?;
+        let version = parse_info(info)
             .into_iter()
             .find(|m| m["Region"] == "us")
             .ok_or("missing us version")?;
@@ -61,8 +68,9 @@ async fn main() -> Result<()> {
     }
     .shared();
     let cdn_fetch = async {
-        let info = fetch(format!("{}/cdns", patch_base)).await?;
-        let cdn = parse_info(&info)
+        let bytes = fetch(format!("{}/cdns", patch_base)).await?;
+        let info = utf8(&*bytes)?;
+        let cdn = parse_info(info)
             .into_iter()
             .find(|m| m["Name"] == "us")
             .ok_or("missing us cdn")?;
@@ -84,7 +92,7 @@ async fn main() -> Result<()> {
                 hash
             );
             let data = fetch(url).await?;
-            assert_eq!(hash, format!("{:x}", md5::compute(&data)));
+            assert_eq!(hash, format!("{:x}", md5::compute(&data)), "{}", data.len());
             Result::Ok(data)
         })
     }
@@ -92,7 +100,7 @@ async fn main() -> Result<()> {
     let buildinfo = async {
         let (version, cdn_fetch) = futures::join!(version.clone(), cdn_fetch.clone());
         Result::Ok(
-            parse_config(&cdn_fetch?("config", version?.0).await?)
+            parse_config(&utf8(&*cdn_fetch?("config", version?.0).await?)?)
                 .get("encoding")
                 .ok_or("missing encoding in buildinfo")?
                 .split(" ")
@@ -103,16 +111,20 @@ async fn main() -> Result<()> {
     let cdninfo = async {
         let (version, cdn_fetch) = futures::join!(version.clone(), cdn_fetch.clone());
         Result::Ok(
-            parse_config(&cdn_fetch?("config", version?.1).await?)
+            parse_config(&utf8(&*cdn_fetch?("config", version?.1).await?)?)
                 .get("archives")
                 .ok_or("missing archives in cdninfo")?
                 .split(" ")
-                .map(|x| x.to_string())
-                .collect::<Vec<String>>(),
+                .count(),
         )
     };
+    let encoding = async {
+        let (buildinfo, cdn_fetch) = futures::join!(buildinfo, cdn_fetch.clone());
+        let data = cdn_fetch?("data", buildinfo?.remove(1)).await?;
+        Result::Ok(data.len())
+    };
     let (_, _) = futures::join!(
-        buildinfo.inspect(|x| if x.is_ok() {
+        encoding.inspect(|x| if x.is_ok() {
             println!("{:?}", x.as_ref().unwrap())
         }),
         cdninfo.inspect(|x| if x.is_ok() {
