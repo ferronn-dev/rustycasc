@@ -1,3 +1,4 @@
+use futures::future::FutureExt;
 use std::collections::HashMap;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
@@ -21,7 +22,21 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
     s.lines().filter_map(|x| x.split_once(" = ")).collect()
 }
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+#[derive(Clone, Debug)]
+enum Error {
+    E(&'static str),
+}
+impl From<reqwest::Error> for Error {
+    fn from(_: reqwest::Error) -> Self {
+        Error::E("http error")
+    }
+}
+impl From<&'static str> for Error {
+    fn from(s: &'static str) -> Self {
+        Error::E(s)
+    }
+}
+type Result<T> = std::result::Result<T, Error>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -71,9 +86,10 @@ async fn main() -> Result<()> {
             assert_eq!(hash, format!("{:x}", md5::compute(&data)));
             Result::Ok(data)
         })
-    };
+    }
+    .shared();
     let buildinfo = async move {
-        let (version, cdn_fetch) = futures::join!(version, cdn_fetch);
+        let (version, cdn_fetch) = futures::join!(version, cdn_fetch.clone());
         Result::Ok(
             parse_config(&cdn_fetch?("config".to_string(), version?.0).await?)
                 .get("encoding")
