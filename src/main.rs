@@ -25,18 +25,11 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let base = "http://us.patch.battle.net:1119/wow_classic_era";
+    let patch_base = "http://us.patch.battle.net:1119/wow_classic_era";
     let ref client = reqwest::Client::new();
-    let fetch = |path| async move {
-        client
-            .get(format!("{}/{}", base, path))
-            .send()
-            .await?
-            .text()
-            .await
-    };
+    let fetch = |url| async move { client.get(url).send().await?.text().await };
     let version = async move {
-        let info = fetch("versions").await?;
+        let info = fetch(format!("{}/versions", patch_base)).await?;
         let version = parse_info(&info)
             .into_iter()
             .find(|m| m["Region"] == "us")
@@ -52,7 +45,7 @@ async fn main() -> Result<()> {
         Result::Ok((build, cdn))
     };
     let cdn_fetch = async move {
-        let info = fetch("cdns").await?;
+        let info = fetch(format!("{}/cdns", patch_base)).await?;
         let cdn = parse_info(&info)
             .into_iter()
             .find(|m| m["Name"] == "us")
@@ -74,7 +67,7 @@ async fn main() -> Result<()> {
                 hash[2..4].to_string(),
                 hash
             );
-            let data = client.get(url).send().await?.text().await?;
+            let data = fetch(url).await?;
             assert_eq!(hash, format!("{:x}", md5::compute(&data)));
             Result::Ok(data)
         })
