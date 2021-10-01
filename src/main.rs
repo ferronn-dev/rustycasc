@@ -26,6 +26,11 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
 enum Error {
     E(&'static str),
 }
+impl From<std::io::Error> for Error {
+    fn from(_: std::io::Error) -> Self {
+        Error::E("io error")
+    }
+}
 impl From<reqwest::Error> for Error {
     fn from(_: reqwest::Error) -> Self {
         Error::E("http error")
@@ -83,6 +88,11 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").ok_or("missing us cdn path")?;
         let prefix = format!("http://{}/{}", host, path);
         Result::Ok(move |tag: &'static str, hash: String| async move {
+            let cache_file = format!("cache/{}.{}", tag, hash);
+            let cached = std::fs::read(cache_file);
+            if cached.is_ok() {
+                return Result::Ok(bytes::Bytes::copy_from_slice(cached.unwrap().as_slice()));
+            }
             let url = format!(
                 "{}/{}/{}/{}/{}",
                 prefix,
@@ -92,6 +102,7 @@ async fn main() -> Result<()> {
                 hash
             );
             let data = fetch(url).await?;
+            std::fs::write(format!("cache/{}.{}", tag, hash), &data)?;
             assert_eq!(hash, format!("{:x}", md5::compute(&data)), "{}", data.len());
             Result::Ok(data)
         })

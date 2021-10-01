@@ -651,6 +651,7 @@ dependencies = [
 name = "rustycasc"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "futures",
  "md5",
  "reqwest",
