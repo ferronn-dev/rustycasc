@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
             .unwrap();
         let path = cdn.get("Path").ok_or("missing us cdn path")?;
         let prefix = format!("http://{}/{}", host, path);
-        Result::Ok(move |tag: String, hash: String| async move {
+        Result::Ok(move |tag: &'static str, hash: String| async move {
             let url = format!(
                 "{}/{}/{}/{}/{}",
                 prefix,
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
     let buildinfo = async move {
         let (version, cdn_fetch) = futures::join!(version, cdn_fetch.clone());
         Result::Ok(
-            parse_config(&cdn_fetch?("config".to_string(), version?.0).await?)
+            parse_config(&cdn_fetch?("config", version?.0).await?)
                 .get("encoding")
                 .ok_or("missing encoding in buildinfo")?
                 .to_string(),
