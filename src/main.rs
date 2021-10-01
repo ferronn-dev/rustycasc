@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
             .text()
             .await
     };
-    let get_version = || async move {
+    let version = async move {
         let info = fetch("versions").await?;
         let version = parse_info(&info)
             .into_iter()
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
             .to_string();
         Result::Ok((build, cdn))
     };
-    let get_cdn_fetcher = || async move {
+    let cdn_fetch = async move {
         let info = fetch("cdns").await?;
         let cdn = parse_info(&info)
             .into_iter()
@@ -79,16 +79,16 @@ async fn main() -> Result<()> {
             Result::Ok(data)
         })
     };
-    let get_buildinfo = || async move {
-        let (version, cdn_fetcher) = futures::join!(get_version(), get_cdn_fetcher());
+    let buildinfo = async move {
+        let (version, cdn_fetch) = futures::join!(version, cdn_fetch);
         Result::Ok(
-            parse_config(&cdn_fetcher?("config".to_string(), version?.0).await?)
+            parse_config(&cdn_fetch?("config".to_string(), version?.0).await?)
                 .get("encoding")
                 .ok_or("missing encoding in buildinfo")?
                 .to_string(),
         )
     };
-    println!("{:?}", get_buildinfo().await?);
+    println!("{:?}", buildinfo.await?);
     Ok(())
 }
 
