@@ -26,8 +26,7 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
 
 fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
-    ensure!(&p[0..4] == b"BLTE", "not BLTE format");
-    p.advance(4);
+    ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
     let header_size = p.get_u32();
     ensure!(header_size > 0, "0 header unimplemented");
     let _flags = p.get_u8();
