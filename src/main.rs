@@ -55,7 +55,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
                 chunk_data
             }
             'Z' => bytes::Bytes::from(
-                inflate(data, uncompressed_size).map_err(|_| anyhow!("deflate error"))?,
+                inflate(data, uncompressed_size).map_err(|_| anyhow!("inflate error"))?,
             ),
             _ => bail!("invalid encoding"),
         };
