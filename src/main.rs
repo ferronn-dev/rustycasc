@@ -58,7 +58,28 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         ensure!(data.len() == uncompressed_size, "invalid uncompressed size");
         result.put(data)
     }
+    ensure!(!p.has_remaining(), "trailing blte data");
     Ok(result.to_vec())
+}
+
+fn parse_encoding(data: &[u8]) -> Result<()> {
+    let mut p = data;
+    ensure!(p.remaining() >= 16, "truncated encoding header");
+    ensure!(&p.get_u16().to_be_bytes() == b"EN", "not encoding format");
+    ensure!(p.get_u8() == 1, "unsupported encoding version");
+    ensure!(p.get_u8() == 16, "unsupported ckey hash size");
+    ensure!(p.get_u8() == 16, "unsupported ekey hash size");
+    let (_csize, _esize) = (p.get_u16(), p.get_u16());
+    let (_ccount, _ecount) = (p.get_u32(), p.get_u32());
+    ensure!(p.get_u8() == 0, "unexpected nonzero byte in header");
+    let espec_size = p.get_u32().try_into()?;
+    ensure!(p.remaining() >= espec_size, "truncated espec block");
+    let especs = p[0..espec_size]
+        .split(|b| *b == b'0')
+        .map(|s| std::str::from_utf8(s).context("parsing encoding espec"))
+        .collect::<Result<Vec<&str>>>()?;
+    println!("{:#?}", especs);
+    Ok(())
 }
 
 #[tokio::main]
@@ -156,10 +177,10 @@ async fn main() -> Result<()> {
     };
     let encoding = async {
         let data = cdn_fetch("data", buildinfo.await?.remove(1)).await?;
-        parse_blte(&data)
+        parse_encoding(&parse_blte(&data)?)
     };
-    let _ = cdninfo.await?;
-    println!("{}", &encoding.await?.len());
+    cdninfo.await?;
+    encoding.await?;
     Ok(())
 }
 
