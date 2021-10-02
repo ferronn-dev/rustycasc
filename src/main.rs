@@ -41,7 +41,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         chunkinfo.push((compressed_size, uncompressed_size, checksum))
     }
     let mut result = bytes::BytesMut::with_capacity(chunkinfo.iter().map(|x| x.1).sum::<usize>());
-    let inflate = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit;
+    let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
     for (compressed_size, uncompressed_size, checksum) in chunkinfo {
         ensure!(
             checksum == u128::from_be_bytes(*md5::compute(&p[0..compressed_size])),
@@ -50,12 +50,9 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         let encoding_mode = p.get_u8();
         let chunk_data = p.copy_to_bytes(compressed_size - 1);
         let data = match encoding_mode as char {
-            'N' => {
-                println!("{:?}", chunk_data);
-                chunk_data
-            }
+            'N' => chunk_data,
             'Z' => bytes::Bytes::from(
-                inflate(data, uncompressed_size).map_err(|_| anyhow!("inflate error"))?,
+                inflate(&chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?,
             ),
             _ => bail!("invalid encoding"),
         };
@@ -163,7 +160,7 @@ async fn main() -> Result<()> {
         parse_blte(&data)
     };
     let _ = cdninfo.await?;
-    println!("{}", utf8(&encoding.await?)?);
+    println!("{}", &encoding.await?.len());
     Ok(())
 }
 
