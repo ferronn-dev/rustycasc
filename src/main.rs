@@ -62,7 +62,12 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
     Ok(result.to_vec())
 }
 
-fn parse_encoding(data: &[u8]) -> Result<()> {
+#[derive(Debug)]
+struct Encoding {
+    especs: Vec<String>,
+}
+
+fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     let mut p = data;
     ensure!(p.remaining() >= 16, "truncated encoding header");
     ensure!(&p.get_u16().to_be_bytes() == b"EN", "not encoding format");
@@ -76,10 +81,9 @@ fn parse_encoding(data: &[u8]) -> Result<()> {
     ensure!(p.remaining() >= espec_size, "truncated espec block");
     let especs = p[0..espec_size]
         .split(|b| *b == b'0')
-        .map(|s| std::str::from_utf8(s).context("parsing encoding espec"))
-        .collect::<Result<Vec<&str>>>()?;
-    println!("{:#?}", especs);
-    Ok(())
+        .map(|s| String::from_utf8(s.to_vec()).context("parsing encoding espec"))
+        .collect::<Result<Vec<String>>>()?;
+    Ok(Encoding { especs })
 }
 
 #[tokio::main]
@@ -179,8 +183,8 @@ async fn main() -> Result<()> {
         let data = cdn_fetch("data", buildinfo.await?.remove(1)).await?;
         parse_encoding(&parse_blte(&data)?)
     };
-    cdninfo.await?;
-    encoding.await?;
+    println!("{:#?}", cdninfo.await?);
+    println!("{:#?}", encoding.await?);
     Ok(())
 }
 
