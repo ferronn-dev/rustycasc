@@ -179,16 +179,6 @@ async fn main() -> Result<()> {
         //assert_eq!(hash, format!("{:x}", md5::compute(&data)), "{}", data.len());
         Ok(data)
     };
-    let buildinfo = async {
-        Result::<Vec<String>>::Ok(
-            parse_config(&utf8(&(cdn_fetch("config", build_config).await?))?)
-                .get("encoding")
-                .context("missing encoding in buildinfo")?
-                .split(" ")
-                .map(|x| x.to_string())
-                .collect(),
-        )
-    };
     let cdninfo = async {
         let _archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
             .get("archives")
@@ -199,7 +189,14 @@ async fn main() -> Result<()> {
         Result::<()>::Ok(())
     };
     let encoding = async {
-        let data = cdn_fetch("data", buildinfo.await?.remove(1)).await?;
+        let buildinfo = parse_config(&utf8(&(cdn_fetch("config", build_config).await?))?)
+            .get("encoding")
+            .context("missing encoding field in buildinfo")?
+            .split(" ")
+            .nth(1)
+            .context("missing data in encoding field in buildinfo")?
+            .to_string();
+        let data = cdn_fetch("data", buildinfo).await?;
         parse_encoding(&parse_blte(&data)?)
     };
     println!("{:#?}", cdninfo.await?);
