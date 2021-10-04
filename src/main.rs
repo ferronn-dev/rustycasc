@@ -65,8 +65,8 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
 #[derive(Debug)]
 struct Encoding {
     especs: Vec<String>,
-    cindex: Vec<(u128, u128)>,
-    eindex: Vec<(u128, u128)>,
+    cindex: HashMap<u128, u128>,
+    eindex: HashMap<u128, u128>,
 }
 
 fn parse_encoding(data: &[u8]) -> Result<Encoding> {
@@ -89,14 +89,14 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
         .collect::<Result<Vec<String>>>()?;
     p.advance(espec_size);
     ensure!(p.remaining() >= ccount * 32);
-    let mut cindex = Vec::<(u128, u128)>::new();
+    let mut cindex = HashMap::<u128, u128>::new();
     for _ in 0..ccount {
-        cindex.push((p.get_u128(), p.get_u128()))
+        cindex.insert(p.get_u128(), p.get_u128());
     }
     ensure!(p.remaining() >= ecount * 32);
-    let mut eindex = Vec::<(u128, u128)>::new();
+    let mut eindex = HashMap::<u128, u128>::new();
     for _ in 0..ecount {
-        eindex.push((p.get_u128(), p.get_u128()))
+        eindex.insert(p.get_u128(), p.get_u128());
     }
     Ok(Encoding {
         especs,
