@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
-use bytes::{Buf, BufMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -39,7 +39,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         let checksum = p.get_u128();
         chunkinfo.push((compressed_size, uncompressed_size, checksum))
     }
-    let mut result = bytes::BytesMut::with_capacity(chunkinfo.iter().map(|x| x.1).sum::<usize>());
+    let mut result = BytesMut::with_capacity(chunkinfo.iter().map(|x| x.1).sum::<usize>());
     let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
     for (compressed_size, uncompressed_size, checksum) in chunkinfo {
         ensure!(
@@ -50,7 +50,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         let chunk_data = p.copy_to_bytes(compressed_size - 1);
         let data = match encoding_mode as char {
             'N' => chunk_data,
-            'Z' => bytes::Bytes::from(
+            'Z' => Bytes::from(
                 inflate(&chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?,
             ),
             _ => bail!("invalid encoding"),
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
     let fetch = |url| async {
         let send_ctx = format!("sending request to {}", url);
         let recv_ctx = format!("receiving content on {}", url);
-        Result::<bytes::Bytes>::Ok(
+        Result::<Bytes>::Ok(
             client
                 .get(url)
                 .send()
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
         let cache_file = format!("cache/{}.{}", tag, hash);
         let cached = std::fs::read(&cache_file);
         if cached.is_ok() {
-            return Result::<bytes::Bytes>::Ok(bytes::Bytes::from(cached.unwrap()));
+            return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
         let url = format!(
             "{}/{}/{}/{}/{}",
