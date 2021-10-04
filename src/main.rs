@@ -180,13 +180,13 @@ async fn main() -> Result<()> {
         Ok(data)
     };
     let cdninfo = async {
-        let _archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
+        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
             .get("archives")
             .context("missing archives in cdninfo")?
             .split(" ")
             .map(|x| x.to_string())
             .collect::<Vec<String>>();
-        Result::<()>::Ok(())
+        Result::<Vec<String>>::Ok(archives)
     };
     let encoding = async {
         let buildinfo = parse_config(&utf8(&(cdn_fetch("config", build_config).await?))?)
