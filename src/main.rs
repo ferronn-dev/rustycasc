@@ -67,6 +67,7 @@ struct Encoding {
     especs: Vec<String>,
     cindex: HashMap<u128, u128>,
     eindex: HashMap<u128, u128>,
+    espec: String,
 }
 
 fn parse_encoding(data: &[u8]) -> Result<Encoding> {
@@ -76,8 +77,8 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     ensure!(p.get_u8() == 1, "unsupported encoding version");
     ensure!(p.get_u8() == 16, "unsupported ckey hash size");
     ensure!(p.get_u8() == 16, "unsupported ekey hash size");
-    let _cpagekb: usize = p.get_u16().try_into()?;
-    let _epagekb: usize = p.get_u16().try_into()?;
+    let cpagekb: usize = p.get_u16().try_into()?;
+    let epagekb: usize = p.get_u16().try_into()?;
     let ccount: usize = p.get_u32().try_into()?;
     let ecount: usize = p.get_u32().try_into()?;
     ensure!(p.get_u8() == 0, "unexpected nonzero byte in header");
@@ -98,10 +99,14 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     for _ in 0..ecount {
         eindex.insert(p.get_u128(), p.get_u128());
     }
+    p.advance(ccount * cpagekb * 1024);
+    p.advance(ecount * epagekb * 1024);
+    let espec = String::from_utf8(p.to_vec())?;
     Ok(Encoding {
         especs,
         cindex,
         eindex,
+        espec,
     })
 }
 
