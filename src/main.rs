@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         let info = utf8(&*versions)?;
         let version = parse_info(info)
             .into_iter()
-            .find(|m| m["Region"] == "us")
+            .find(|m| m.get("Region") == Some(&"us"))
             .context("missing us version")?;
         let build = version
             .get("BuildConfig")
@@ -149,7 +149,7 @@ async fn main() -> Result<()> {
         let info = utf8(&*cdns)?;
         let cdn = parse_info(info)
             .into_iter()
-            .find(|m| m["Name"] == "us")
+            .find(|m| m.get("Name") == Some(&"us"))
             .context("missing us cdn")?;
         let host = cdn
             .get("Hosts")
