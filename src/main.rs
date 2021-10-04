@@ -65,6 +65,8 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
 #[derive(Debug)]
 struct Encoding {
     especs: Vec<String>,
+    cindex: Vec<(u128, u128)>,
+    eindex: Vec<(u128, u128)>,
 }
 
 fn parse_encoding(data: &[u8]) -> Result<Encoding> {
@@ -74,24 +76,33 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     ensure!(p.get_u8() == 1, "unsupported encoding version");
     ensure!(p.get_u8() == 16, "unsupported ckey hash size");
     ensure!(p.get_u8() == 16, "unsupported ekey hash size");
-    let cpagekb: usize = p.get_u16().try_into()?;
-    let epagekb: usize = p.get_u16().try_into()?;
+    let _cpagekb: usize = p.get_u16().try_into()?;
+    let _epagekb: usize = p.get_u16().try_into()?;
     let ccount: usize = p.get_u32().try_into()?;
     let ecount: usize = p.get_u32().try_into()?;
     ensure!(p.get_u8() == 0, "unexpected nonzero byte in header");
     let espec_size = p.get_u32().try_into()?;
-    let csize = cpagekb * ccount * 1024;
-    let esize = epagekb * ecount * 1024;
-    ensure!(
-        p.remaining() >= espec_size + csize + esize,
-        "truncated encoding size"
-    );
+    ensure!(p.remaining() >= espec_size, "truncated espec table");
     let especs = p[0..espec_size]
         .split(|b| *b == b'0')
         .map(|s| String::from_utf8(s.to_vec()).context("parsing encoding espec"))
         .collect::<Result<Vec<String>>>()?;
     p.advance(espec_size);
-    Ok(Encoding { especs })
+    ensure!(p.remaining() >= ccount * 32);
+    let mut cindex = Vec::<(u128, u128)>::new();
+    for _ in 0..ccount {
+        cindex.push((p.get_u128(), p.get_u128()))
+    }
+    ensure!(p.remaining() >= ecount * 32);
+    let mut eindex = Vec::<(u128, u128)>::new();
+    for _ in 0..ecount {
+        eindex.push((p.get_u128(), p.get_u128()))
+    }
+    Ok(Encoding {
+        especs,
+        cindex,
+        eindex,
+    })
 }
 
 #[tokio::main]
