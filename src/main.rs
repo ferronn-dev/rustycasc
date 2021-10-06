@@ -24,6 +24,29 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
     s.lines().filter_map(|x| x.split_once(" = ")).collect()
 }
 
+struct BuildConfig {
+    _root: u128,
+    encoding: u128,
+}
+
+fn parse_hash(s: &str) -> Result<u128> {
+    u128::from_str_radix(s, 16).context("parse hash")
+}
+
+fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
+    Ok(BuildConfig {
+        _root: parse_hash(config.get("root").context("build config: root")?)?,
+        encoding: parse_hash(
+            config
+                .get("encoding")
+                .context("missing encoding field in buildinfo")?
+                .split(" ")
+                .nth(1)
+                .context("missing data in encoding field in buildinfo")?,
+        )?,
+    })
+}
+
 fn md5hash(p: &[u8]) -> u128 {
     u128::from_be_bytes(*md5::compute(p))
 }
@@ -179,15 +202,17 @@ async fn main() -> Result<()> {
             .into_iter()
             .find(|m| m.get("Region") == Some(&"us"))
             .context("missing us version")?;
-        let build = version
-            .get("BuildConfig")
-            .context("missing us build config version")?
-            .to_string();
-        let cdn = version
-            .get("CDNConfig")
-            .context("missing us cdn config version")?
-            .to_string();
-        Result::<(String, String)>::Ok((build, cdn))
+        let build = parse_hash(
+            version
+                .get("BuildConfig")
+                .context("missing us build config version")?,
+        )?;
+        let cdn = parse_hash(
+            version
+                .get("CDNConfig")
+                .context("missing us cdn config version")?,
+        )?;
+        Result::<(u128, u128)>::Ok((build, cdn))
     })()?;
     let ref cdn_prefix = (|| {
         let info = utf8(&*cdns)?;
@@ -204,8 +229,9 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<String>::Ok(format!("http://{}/{}", host, path))
     })()?;
-    let cdn_fetch = |tag: &'static str, hash: String| async move {
-        let cache_file = format!("cache/{}.{}", tag, hash);
+    let cdn_fetch = |tag: &'static str, hash: u128| async move {
+        let hashstr = format!("{:016x}", hash);
+        let cache_file = format!("cache/{}.{}", tag, hashstr);
         let cached = std::fs::read(&cache_file);
         if cached.is_ok() {
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
@@ -214,9 +240,9 @@ async fn main() -> Result<()> {
             "{}/{}/{}/{}/{}",
             cdn_prefix,
             tag,
-            &hash[0..2],
-            &hash[2..4],
-            hash
+            &hashstr[0..2],
+            &hashstr[2..4],
+            hashstr
         );
         let data = fetch(url).await?;
         std::fs::write(&cache_file, &data)?;
@@ -232,19 +258,14 @@ async fn main() -> Result<()> {
             .collect::<Vec<String>>();
         Result::<Vec<String>>::Ok(archives)
     };
-    let encoding = async {
-        let buildinfo = parse_config(&utf8(&(cdn_fetch("config", build_config).await?))?)
-            .get("encoding")
-            .context("missing encoding field in buildinfo")?
-            .split(" ")
-            .nth(1)
-            .context("missing data in encoding field in buildinfo")?
-            .to_string();
-        let data = cdn_fetch("data", buildinfo).await?;
-        parse_encoding(&parse_blte(&data)?)
-    };
-    println!("{:#?}", cdninfo.await?);
-    println!("{:#?}", encoding.await?);
+    let buildinfo = parse_build_config(&parse_config(&utf8(
+        &(cdn_fetch("config", build_config).await?),
+    )?))?;
+    let encoding = parse_encoding(&parse_blte(
+        &(cdn_fetch("data", buildinfo.encoding).await?),
+    )?)?;
+    println!("{:#?}", cdninfo.await?.len());
+    println!("{:#?}", encoding);
     Ok(())
 }
 
