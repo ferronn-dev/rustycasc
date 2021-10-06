@@ -69,7 +69,8 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
 #[derive(Debug)]
 struct Encoding {
     especs: Vec<String>,
-    cmap: HashMap<u128, Vec<u128>>,
+    cmap: HashMap<u128, (Vec<u128>, u64)>,
+    emap: HashMap<u128, (usize, u64)>,
     espec: String,
 }
 
@@ -97,7 +98,7 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     for _ in 0..ccount {
         cpages.push((p.get_u128(), p.get_u128()));
     }
-    let mut cmap = HashMap::<u128, Vec<u128>>::new();
+    let mut cmap = HashMap::<u128, (Vec<u128>, u64)>::new();
     for (first_key, hash) in cpages {
         let pagesize = cpagekb * 1024;
         ensure!(hash == md5hash(&p[0..pagesize]), "content page checksum");
@@ -105,7 +106,7 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
         let mut first = true;
         while page.remaining() >= 22 && page.chunk()[0] != b'0' {
             let key_count = page.get_u8().try_into()?;
-            let _file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
+            let file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
             let ckey = page.get_u128();
             ensure!(!first || first_key == ckey, "first key mismatch in content");
             first = false;
@@ -114,7 +115,7 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
             for _ in 0..key_count {
                 ekeys.push(page.get_u128());
             }
-            cmap.insert(ckey, ekeys);
+            cmap.insert(ckey, (ekeys, file_size));
         }
         p.advance(pagesize)
     }
@@ -123,15 +124,27 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     for _ in 0..ecount {
         epages.push((p.get_u128(), p.get_u128()));
     }
-    for (_first_key, hash) in epages {
+    let mut emap = HashMap::<u128, (usize, u64)>::new();
+    for (first_key, hash) in epages {
         let pagesize = epagekb * 1024;
         ensure!(hash == md5hash(&p[0..pagesize]), "encoding page checksum");
+        let mut page = p.take(pagesize);
+        let mut first = true;
+        while page.remaining() >= 25 && page.chunk()[0] != b'0' {
+            let ekey = page.get_u128();
+            let index = page.get_u32().try_into()?;
+            let file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
+            ensure!(!first || first_key == ekey, "first key mismatch in content");
+            first = false;
+            emap.insert(ekey, (index, file_size));
+        }
         p.advance(pagesize)
     }
     let espec = String::from_utf8(p.to_vec())?;
     Ok(Encoding {
         especs,
         cmap,
+        emap,
         espec,
     })
 }
