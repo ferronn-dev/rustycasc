@@ -25,7 +25,7 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
 }
 
 struct BuildConfig {
-    _root: u128,
+    root: u128,
     encoding: u128,
 }
 
@@ -35,7 +35,7 @@ fn parse_hash(s: &str) -> Result<u128> {
 
 fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     Ok(BuildConfig {
-        _root: parse_hash(config.get("root").context("build config: root")?)?,
+        root: parse_hash(config.get("root").context("build config: root")?)?,
         encoding: parse_hash(
             config
                 .get("encoding")
@@ -264,8 +264,16 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    println!("{:#?}", cdninfo.await?.len());
-    println!("{:#?}", encoding);
+    let root = encoding
+        .cmap
+        .get(&buildinfo.root)
+        .context("root encoding")?
+        .0
+        .get(0)
+        .context("root encoding array")?;
+    println!("{}", cdninfo.await?.len());
+    println!("{} {}", encoding.cmap.len(), encoding.emap.len());
+    println!("{:016x}", root);
     Ok(())
 }
 
