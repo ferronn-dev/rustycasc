@@ -24,6 +24,10 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
     s.lines().filter_map(|x| x.split_once(" = ")).collect()
 }
 
+fn md5hash(p: &[u8]) -> u128 {
+    u128::from_be_bytes(*md5::compute(p))
+}
+
 fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
     ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
@@ -43,7 +47,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
     let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
     for (compressed_size, uncompressed_size, checksum) in chunkinfo {
         ensure!(
-            checksum == u128::from_be_bytes(*md5::compute(&p[0..compressed_size])),
+            checksum == md5hash(&p[0..compressed_size]),
             "chunk checksum error"
         );
         let encoding_mode = p.get_u8();
@@ -65,8 +69,7 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
 #[derive(Debug)]
 struct Encoding {
     especs: Vec<String>,
-    cindex: HashMap<u128, u128>,
-    eindex: HashMap<u128, u128>,
+    cmap: HashMap<u128, Vec<u128>>,
     espec: String,
 }
 
@@ -90,22 +93,45 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
         .collect::<Result<Vec<String>>>()?;
     p.advance(espec_size);
     ensure!(p.remaining() >= ccount * 32);
-    let mut cindex = HashMap::<u128, u128>::new();
+    let mut cpages = Vec::<(u128, u128)>::new();
     for _ in 0..ccount {
-        cindex.insert(p.get_u128(), p.get_u128());
+        cpages.push((p.get_u128(), p.get_u128()));
+    }
+    let mut cmap = HashMap::<u128, Vec<u128>>::new();
+    for (first_key, hash) in cpages {
+        let pagesize = cpagekb * 1024;
+        ensure!(hash == md5hash(&p[0..pagesize]), "content page checksum");
+        let mut page = p.take(pagesize);
+        let mut first = true;
+        while page.remaining() >= 22 && page.chunk()[0] != b'0' {
+            let key_count = page.get_u8().try_into()?;
+            let _file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
+            let ckey = page.get_u128();
+            ensure!(!first || first_key == ckey, "first key mismatch in content");
+            first = false;
+            ensure!(page.remaining() >= key_count * 16 as usize);
+            let mut ekeys = Vec::<u128>::new();
+            for _ in 0..key_count {
+                ekeys.push(page.get_u128());
+            }
+            cmap.insert(ckey, ekeys);
+        }
+        p.advance(pagesize)
     }
     ensure!(p.remaining() >= ecount * 32);
-    let mut eindex = HashMap::<u128, u128>::new();
+    let mut epages = Vec::<(u128, u128)>::new();
     for _ in 0..ecount {
-        eindex.insert(p.get_u128(), p.get_u128());
+        epages.push((p.get_u128(), p.get_u128()));
     }
-    p.advance(ccount * cpagekb * 1024);
-    p.advance(ecount * epagekb * 1024);
+    for (_first_key, hash) in epages {
+        let pagesize = epagekb * 1024;
+        ensure!(hash == md5hash(&p[0..pagesize]), "encoding page checksum");
+        p.advance(pagesize)
+    }
     let espec = String::from_utf8(p.to_vec())?;
     Ok(Encoding {
         especs,
-        cindex,
-        eindex,
+        cmap,
         espec,
     })
 }
