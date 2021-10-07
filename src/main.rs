@@ -178,6 +178,19 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     })
 }
 
+#[derive(Debug)]
+struct Root {
+    mfst: bool,
+}
+
+fn parse_root(data: &[u8]) -> Result<Root> {
+    let mut p = data;
+    ensure!(p.remaining() >= 4, "empty root?");
+    let magic = p.get_u32();
+    let mfst = magic.to_le_bytes() == *b"MFST"; // little endian
+    Ok(Root { mfst })
+}
+
 #[derive(StructOpt)]
 struct Cli {
     product: String,
@@ -263,7 +276,7 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    let root = parse_blte(
+    let root = parse_root(&parse_blte(
         &cdn_fetch(
             "data",
             *encoding
@@ -275,10 +288,10 @@ async fn main() -> Result<()> {
                 .context("root encoding array")?,
         )
         .await?,
-    )?;
+    )?)?;
     println!("{}", cdninfo.await?.len());
     println!("{} {}", encoding.cmap.len(), encoding.emap.len());
-    println!("{}", root.len());
+    println!("{:?}", root);
     Ok(())
 }
 
