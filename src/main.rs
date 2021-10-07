@@ -178,7 +178,14 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     })
 }
 
-fn parse_root(data: &[u8]) -> Result<HashMap<i32, u128>> {
+#[derive(Debug)]
+struct RootData {
+    fdid: i32,
+    content_key: u128,
+    name_hash: u64,
+}
+
+fn parse_root(data: &[u8]) -> Result<Vec<RootData>> {
     let mut p = data;
     ensure!(p.remaining() >= 4, "empty root?");
     let interleave;
@@ -194,7 +201,7 @@ fn parse_root(data: &[u8]) -> Result<HashMap<i32, u128>> {
         interleave = true;
         can_skip = false;
     }
-    let mut t = HashMap::<i32, u128>::new();
+    let mut result = Vec::<RootData>::new();
     while p.has_remaining() {
         ensure!(p.remaining() >= 12, "truncated root cas block");
         let num_records: usize = p.get_u32_le().try_into()?;
@@ -211,10 +218,11 @@ fn parse_root(data: &[u8]) -> Result<HashMap<i32, u128>> {
             fdids.push(fdid)
         }
         let mut content_keys = Vec::<u128>::new();
+        let mut name_hashes = Vec::<u64>::new();
         if interleave {
             for _ in 0..num_records {
                 content_keys.push(p.get_u128());
-                let _name_hash = p.get_u64_le();
+                name_hashes.push(p.get_u64_le());
             }
         } else {
             for _ in 0..num_records {
@@ -222,19 +230,21 @@ fn parse_root(data: &[u8]) -> Result<HashMap<i32, u128>> {
             }
             if !can_skip || content_flags & 0x10000000 == 0 {
                 for _ in 0..num_records {
-                    let _name_hash = p.get_u64_le();
+                    name_hashes.push(p.get_u64_le());
                 }
+            } else {
+                name_hashes.resize(num_records, 0);
             }
         }
-        for (k, v) in fdids.into_iter().zip(content_keys) {
-            ensure!(
-                t.insert(k, v).is_none(),
-                "duplicate content key for fdid {}",
-                k
-            )
+        for i in 0..num_records {
+            result.push(RootData {
+                fdid: fdids[i],
+                content_key: content_keys[i],
+                name_hash: name_hashes[i],
+            })
         }
     }
-    Ok(t)
+    Ok(result)
 }
 
 #[derive(StructOpt)]
