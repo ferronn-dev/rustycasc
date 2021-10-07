@@ -258,16 +258,20 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    let root = encoding
-        .cmap
-        .get(&buildinfo.root)
-        .context("root encoding")?
-        .0
-        .get(0)
-        .context("root encoding array")?;
+    let root = cdn_fetch(
+        "data",
+        *encoding
+            .cmap
+            .get(&buildinfo.root)
+            .context("root encoding")?
+            .0
+            .get(0)
+            .context("root encoding array")?,
+    )
+    .await?;
     println!("{}", cdninfo.await?.len());
     println!("{} {}", encoding.cmap.len(), encoding.emap.len());
-    println!("{:032x}", root);
+    println!("{}", root.len());
     Ok(())
 }
 
