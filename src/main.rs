@@ -226,7 +226,7 @@ async fn main() -> Result<()> {
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
     let cdn_fetch = |tag: &'static str, hash: u128| async move {
-        let hashstr = format!("{:016x}", hash);
+        let hashstr = format!("{:032x}", hash);
         let cache_file = format!("cache/{}.{}", tag, hashstr);
         let cached = std::fs::read(&cache_file);
         if cached.is_ok() {
@@ -267,7 +267,7 @@ async fn main() -> Result<()> {
         .context("root encoding array")?;
     println!("{}", cdninfo.await?.len());
     println!("{} {}", encoding.cmap.len(), encoding.emap.len());
-    println!("{:016x}", root);
+    println!("{:032x}", root);
     Ok(())
 }
 
