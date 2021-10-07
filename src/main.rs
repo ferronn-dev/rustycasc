@@ -208,20 +208,15 @@ async fn main() -> Result<()> {
         )?;
         Result::<(u128, u128)>::Ok((build, cdn))
     })()?;
-    let ref cdn_prefix = (|| {
+    let ref cdn_prefixes = (|| {
         let info = utf8(&*cdns)?;
         let cdn = parse_info(info)
             .into_iter()
             .find(|m| m.get("Name") == Some(&"us"))
             .context("missing us cdn")?;
-        let host = cdn
-            .get("Hosts")
-            .context("missing us cdn hosts")?
-            .split(" ")
-            .next()
-            .unwrap();
+        let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(" ");
         let path = cdn.get("Path").context("missing us cdn path")?;
-        Result::<String>::Ok(format!("http://{}/{}", host, path))
+        Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
     let cdn_fetch = |tag: &'static str, hash: u128| async move {
         let hashstr = format!("{:016x}", hash);
@@ -230,18 +225,16 @@ async fn main() -> Result<()> {
         if cached.is_ok() {
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
-        let url = format!(
-            "{}/{}/{}/{}/{}",
-            cdn_prefix,
-            tag,
-            &hashstr[0..2],
-            &hashstr[2..4],
-            hashstr
-        );
-        let data = fetch(url).await?;
-        std::fs::write(&cache_file, &data)?;
-        //assert_eq!(hash, format!("{:x}", md5::compute(&data)), "{}", data.len());
-        Ok(data)
+        let suffix = format!("{}/{}/{}/{}", tag, &hashstr[0..2], &hashstr[2..4], hashstr);
+        for cdn_prefix in cdn_prefixes {
+            let data = fetch(format!("{}/{}", cdn_prefix, suffix)).await;
+            if data.is_ok() {
+                let data = data.unwrap();
+                std::fs::write(&cache_file, &data)?;
+                return Ok(data);
+            }
+        }
+        bail!("fetch failed on all hosts")
     };
     let cdninfo = async {
         let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
