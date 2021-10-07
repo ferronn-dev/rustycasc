@@ -178,17 +178,11 @@ async fn main() -> Result<()> {
     let client = reqwest::Client::new();
     let fetch = |url| async {
         let send_ctx = format!("sending request to {}", url);
+        let status_ctx = format!("http error on {}", url);
         let recv_ctx = format!("receiving content on {}", url);
-        Result::<Bytes>::Ok(
-            client
-                .get(url)
-                .send()
-                .await
-                .context(send_ctx)?
-                .bytes()
-                .await
-                .context(recv_ctx)?,
-        )
+        let response = client.get(url).send().await.context(send_ctx)?;
+        ensure!(response.status().is_success(), status_ctx);
+        response.bytes().await.context(recv_ctx)
     };
     let utf8 = std::str::from_utf8;
     let (versions, cdns) = futures::join!(
