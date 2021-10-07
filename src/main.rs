@@ -180,59 +180,61 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
 
 fn parse_root(data: &[u8]) -> Result<HashMap<i32, u128>> {
     let mut p = data;
-    let mut parse_root_blocks = move |f: &mut dyn FnMut(usize, u32) -> Result<Vec<u128>>| {
-        let mut t = HashMap::<i32, u128>::new();
-        while p.has_remaining() {
-            ensure!(p.remaining() >= 12, "truncated root cas block");
-            let num_records: usize = p.get_u32().try_into()?;
-            let content_flags = p.get_u32();
-            let _locale_flags = p.get_u32();
-            ensure!(
-                p.remaining() >= 4 * num_records,
-                "truncated filedataid delta block"
-            );
-            let mut fdids = Vec::<i32>::new();
-            let mut fdid = -1;
-            for _ in 0..num_records {
-                fdid = fdid + p.get_i32() + 1;
-                fdids.push(fdid)
-            }
-            let content_keys = f(num_records, content_flags)?;
-            fdids.into_iter().zip(content_keys).for_each(|(k, v)| {
-                t.insert(k, v);
-            });
-        }
-        Ok(t)
-    };
     ensure!(p.remaining() >= 4, "empty root?");
+    let interleave;
+    let can_skip;
     if p[..4] == *b"TSFM" {
         p.advance(4);
         ensure!(p.remaining() >= 8, "truncated root header");
-        let total_file_count = p.get_u32();
-        let named_file_count = p.get_u32();
-        let can_skip = total_file_count != named_file_count;
-        parse_root_blocks(&mut |n, flags| {
-            let mut content_keys = Vec::<u128>::new();
-            for _ in 0..n {
+        let total_file_count = p.get_u32_le();
+        let named_file_count = p.get_u32_le();
+        interleave = false;
+        can_skip = total_file_count != named_file_count;
+    } else {
+        interleave = true;
+        can_skip = false;
+    }
+    let mut t = HashMap::<i32, u128>::new();
+    while p.has_remaining() {
+        ensure!(p.remaining() >= 12, "truncated root cas block");
+        let num_records: usize = p.get_u32_le().try_into()?;
+        let content_flags = p.get_u32_le();
+        let _locale_flags = p.get_u32_le();
+        ensure!(
+            p.remaining() >= 4 * num_records,
+            "truncated filedataid delta block"
+        );
+        let mut fdids = Vec::<i32>::new();
+        let mut fdid = -1;
+        for _ in 0..num_records {
+            fdid = fdid + p.get_i32_le() + 1;
+            fdids.push(fdid)
+        }
+        let mut content_keys = Vec::<u128>::new();
+        if interleave {
+            for _ in 0..num_records {
+                content_keys.push(p.get_u128());
+                let _name_hash = p.get_u64_le();
+            }
+        } else {
+            for _ in 0..num_records {
                 content_keys.push(p.get_u128());
             }
-            if !can_skip || flags & 0x10000000 == 0 {
-                for _ in 0..n {
-                    let _name_hash = p.get_u64();
+            if !can_skip || content_flags & 0x10000000 == 0 {
+                for _ in 0..num_records {
+                    let _name_hash = p.get_u64_le();
                 }
             }
-            Ok(content_keys)
-        })
-    } else {
-        parse_root_blocks(&mut |n, _| {
-            let mut content_keys = Vec::<u128>::new();
-            for _ in 0..n {
-                content_keys.push(p.get_u128());
-                let _name_hash = p.get_u64();
-            }
-            Ok(content_keys)
-        })
+        }
+        for (k, v) in fdids.into_iter().zip(content_keys) {
+            ensure!(
+                t.insert(k, v).is_none(),
+                "duplicate content key for fdid {}",
+                k
+            )
+        }
     }
+    Ok(t)
 }
 
 #[derive(StructOpt)]
