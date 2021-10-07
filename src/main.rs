@@ -52,12 +52,27 @@ fn md5hash(p: &[u8]) -> u128 {
     u128::from_be_bytes(*md5::compute(p))
 }
 
+fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
+    let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
+    let chunk_data = &data[1..];
+    Ok(match data[0] as char {
+        'N' => Bytes::from(chunk_data.to_vec()),
+        'Z' => Bytes::from(
+            inflate(&chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?,
+        ),
+        _ => bail!("invalid encoding"),
+    })
+}
+
 fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
+    ensure!(p.remaining() >= 12, "truncated header");
     ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
     let header_size = p.get_u32();
-    ensure!(header_size > 0, "0 header unimplemented");
-    let _flags = p.get_u8();
+    if header_size == 0 {
+        return Ok(parse_blte_chunk(p)?.to_vec());
+    }
+    ensure!(p.get_u8() == 0xf, "bad flag byte");
     let chunk_count = (u32::from(p.get_u8()) << 16) | u32::from(p.get_u16());
     ensure!(header_size == chunk_count * 24 + 12, "header size mismatch");
     let mut chunkinfo = Vec::<(usize, usize, u128)>::new();
@@ -68,23 +83,13 @@ fn parse_blte(data: &[u8]) -> Result<Vec<u8>> {
         chunkinfo.push((compressed_size, uncompressed_size, checksum))
     }
     let mut result = BytesMut::with_capacity(chunkinfo.iter().map(|x| x.1).sum::<usize>());
-    let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
     for (compressed_size, uncompressed_size, checksum) in chunkinfo {
-        ensure!(
-            checksum == md5hash(&p[0..compressed_size]),
-            "chunk checksum error"
-        );
-        let encoding_mode = p.get_u8();
-        let chunk_data = p.copy_to_bytes(compressed_size - 1);
-        let data = match encoding_mode as char {
-            'N' => chunk_data,
-            'Z' => Bytes::from(
-                inflate(&chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?,
-            ),
-            _ => bail!("invalid encoding"),
-        };
+        let chunk = &p[0..compressed_size];
+        ensure!(checksum == md5hash(chunk), "chunk checksum error");
+        let data = parse_blte_chunk(chunk)?;
         ensure!(data.len() == uncompressed_size, "invalid uncompressed size");
-        result.put(data)
+        result.put(data);
+        p.advance(compressed_size)
     }
     ensure!(!p.has_remaining(), "trailing blte data");
     Ok(result.to_vec())
@@ -258,17 +263,19 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    let root = cdn_fetch(
-        "data",
-        *encoding
-            .cmap
-            .get(&buildinfo.root)
-            .context("root encoding")?
-            .0
-            .get(0)
-            .context("root encoding array")?,
-    )
-    .await?;
+    let root = parse_blte(
+        &cdn_fetch(
+            "data",
+            *encoding
+                .cmap
+                .get(&buildinfo.root)
+                .context("root encoding")?
+                .0
+                .get(0)
+                .context("root encoding array")?,
+        )
+        .await?,
+    )?;
     println!("{}", cdninfo.await?.len());
     println!("{} {}", encoding.cmap.len(), encoding.emap.len());
     println!("{}", root.len());
