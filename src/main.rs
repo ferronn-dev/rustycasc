@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::collections::HashMap;
 use std::convert::TryInto;
+use structopt::StructOpt;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s == "" {
@@ -172,9 +173,15 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     })
 }
 
+#[derive(StructOpt)]
+struct Cli {
+    product: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let patch_base = "http://us.patch.battle.net:1119/wow_classic_era";
+    let cli = Cli::from_args_safe()?;
+    let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
     let fetch = |url| async {
         let send_ctx = format!("sending request to {}", url);
