@@ -190,14 +190,26 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     })
 }
 
-#[derive(Debug)]
 struct RootData {
     fdid: i32,
     content_key: u128,
-    name_hash: u64,
+    _name_hash: u64,
 }
 
-fn parse_root(data: &[u8]) -> Result<Vec<RootData>> {
+struct Root(Vec<RootData>);
+
+impl Root {
+    fn f2c(&self, fdid: i32) -> Result<u128> {
+        for d in &self.0 {
+            if d.fdid == fdid {
+                return Ok(d.content_key);
+            }
+        }
+        bail!("no content key for fdid {}", fdid)
+    }
+}
+
+fn parse_root(data: &[u8]) -> Result<Root> {
     let mut p = data;
     ensure!(p.remaining() >= 4, "empty root?");
     let interleave;
@@ -252,11 +264,11 @@ fn parse_root(data: &[u8]) -> Result<Vec<RootData>> {
             result.push(RootData {
                 fdid: fdids[i],
                 content_key: content_keys[i],
-                name_hash: name_hashes[i],
+                _name_hash: name_hashes[i],
             })
         }
     }
-    Ok(result)
+    Ok(Root(result))
 }
 
 #[derive(StructOpt)]
@@ -327,7 +339,7 @@ async fn main() -> Result<()> {
                 return Ok(data);
             }
         }
-        bail!("fetch failed on all hosts")
+        bail!("fetch failed on all hosts: {}", suffix)
     };
     let _cdninfo = async {
         let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
@@ -344,9 +356,10 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    let _root = parse_root(&parse_blte(
+    let root = parse_root(&parse_blte(
         &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
     )?)?;
+    let _tocbase = cdn_fetch("data", encoding.c2e(root.f2c(1267335)?)?).await?;
     Ok(())
 }
 
