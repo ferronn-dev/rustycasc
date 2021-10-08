@@ -103,6 +103,18 @@ struct Encoding {
     espec: String,
 }
 
+impl Encoding {
+    fn c2e(&self, c: u128) -> Result<u128> {
+        Ok(*self
+            .cmap
+            .get(&c)
+            .context(format!("no encoding key for content key {:032x}", c))?
+            .0
+            .get(0)
+            .context(format!("missing encoding key for content key {:032x}", c))?)
+    }
+}
+
 fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     let mut p = data;
     ensure!(p.remaining() >= 16, "truncated encoding header");
@@ -317,7 +329,7 @@ async fn main() -> Result<()> {
         }
         bail!("fetch failed on all hosts")
     };
-    let cdninfo = async {
+    let _cdninfo = async {
         let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
             .get("archives")
             .context("missing archives in cdninfo")?
@@ -332,22 +344,9 @@ async fn main() -> Result<()> {
     let encoding = parse_encoding(&parse_blte(
         &(cdn_fetch("data", buildinfo.encoding).await?),
     )?)?;
-    let root = parse_root(&parse_blte(
-        &cdn_fetch(
-            "data",
-            *encoding
-                .cmap
-                .get(&buildinfo.root)
-                .context("root encoding")?
-                .0
-                .get(0)
-                .context("root encoding array")?,
-        )
-        .await?,
+    let _root = parse_root(&parse_blte(
+        &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
     )?)?;
-    println!("{}", cdninfo.await?.len());
-    println!("{} {}", encoding.cmap.len(), encoding.emap.len());
-    println!("{:#?}", root);
     Ok(())
 }
 
