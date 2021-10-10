@@ -271,6 +271,13 @@ fn parse_root(data: &[u8]) -> Result<Root> {
     Ok(Root(result))
 }
 
+#[derive(Debug)]
+struct ArchiveIndex {}
+
+fn parse_archive_index(_data: &[u8]) -> Result<ArchiveIndex> {
+    Ok(ArchiveIndex {})
+}
+
 #[derive(StructOpt)]
 struct Cli {
     product: String,
@@ -345,19 +352,22 @@ async fn main() -> Result<()> {
         let cache_file = format!("{}{}.{}", tag, suffix, h);
         do_cdn_fetch(path, cache_file).await
     };
-    let cdninfo = async {
-        let archives: Vec<u128> =
-            parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
-                .get("archives")
-                .context("missing archives in cdninfo")?
-                .split(" ")
-                .map(parse_hash)
-                .collect::<Result<Vec<u128>>>()?;
-        let _ = futures::future::join_all(archives.iter().map(|h| cdn_fetch("data", *h, ".index")))
+    let archive_index = async {
+        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
+            .get("archives")
+            .context("missing archives in cdninfo")?
+            .split(" ")
+            .map(parse_hash)
+            .collect::<Result<Vec<u128>>>()?;
+        let indices =
+            futures::future::join_all(archives.into_iter().map(|h| async move {
+                parse_archive_index(&(cdn_fetch("data", h, ".index").await?))
+            }))
             .await
             .into_iter()
-            .collect::<Result<Vec<Bytes>>>()?;
-        Result::<Vec<u128>>::Ok(archives)
+            .collect::<Result<Vec<ArchiveIndex>>>()?;
+        println!("{:#?}", indices[0]);
+        Result::<ArchiveIndex>::Ok(ArchiveIndex {})
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
@@ -371,8 +381,8 @@ async fn main() -> Result<()> {
         )?)?;
         Result::<(Encoding, Root)>::Ok((encoding, root))
     };
-    let (cdninfo, encoding_and_root) = futures::join!(cdninfo, encoding_and_root);
-    let (_, (encoding, root)) = (cdninfo?, encoding_and_root?);
+    let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
+    let (_archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
     let _tocbase = cdn_fetch("data", encoding.c2e(root.f2c(1267335)?)?, "").await?;
     Ok(())
 }
