@@ -339,14 +339,14 @@ async fn main() -> Result<()> {
         }
         bail!("fetch failed on all hosts: {}", path)
     };
-    let cdn_fetch = |tag: &'static str, hash: u128| async move {
+    let cdn_fetch = |tag: &'static str, hash: u128, suffix: &'static str| async move {
         let h = format!("{:032x}", hash);
-        let path = format!("{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h);
-        let cache_file = format!("{}.{}", tag, h);
+        let path = format!("{}/{}/{}/{}{}", tag, &h[0..2], &h[2..4], h, suffix);
+        let cache_file = format!("{}{}.{}", tag, suffix, h);
         do_cdn_fetch(path, cache_file).await
     };
     let cdninfo = async {
-        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
+        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
             .get("archives")
             .context("missing archives in cdninfo")?
             .split(" ")
@@ -356,19 +356,19 @@ async fn main() -> Result<()> {
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
-            &(cdn_fetch("config", build_config).await?),
+            &(cdn_fetch("config", build_config, "").await?),
         )?))?;
         let encoding = parse_encoding(&parse_blte(
-            &(cdn_fetch("data", buildinfo.encoding).await?),
+            &(cdn_fetch("data", buildinfo.encoding, "").await?),
         )?)?;
         let root = parse_root(&parse_blte(
-            &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
+            &cdn_fetch("data", encoding.c2e(buildinfo.root)?, "").await?,
         )?)?;
         Result::<(Encoding, Root)>::Ok((encoding, root))
     };
     let (cdninfo, encoding_and_root) = futures::join!(cdninfo, encoding_and_root);
     let (_, (encoding, root)) = (cdninfo?, encoding_and_root?);
-    let _tocbase = cdn_fetch("data", encoding.c2e(root.f2c(1267335)?)?).await?;
+    let _tocbase = cdn_fetch("data", encoding.c2e(root.f2c(1267335)?)?, "").await?;
     Ok(())
 }
 
