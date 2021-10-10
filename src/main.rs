@@ -354,7 +354,9 @@ async fn main() -> Result<()> {
                 .map(parse_hash)
                 .collect::<Result<Vec<u128>>>()?;
         let _ = futures::future::join_all(archives.iter().map(|h| cdn_fetch("data", *h, ".index")))
-            .await;
+            .await
+            .into_iter()
+            .collect::<Result<Vec<Bytes>>>()?;
         Result::<Vec<u128>>::Ok(archives)
     };
     let encoding_and_root = async {
