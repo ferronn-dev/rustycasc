@@ -308,8 +308,16 @@ fn parse_archive_index(data: &[u8]) -> Result<ArchiveIndex> {
         "unexpected archive index checksum size"
     );
     let _num_elements = footer.get_u32_le();
-    let _footer_checksum = footer.get_u64();
-    assert!(!footer.has_remaining());
+    {
+        let footer_checksum = footer.get_u64();
+        assert!(!footer.has_remaining());
+        let mut footer_to_check = data[non_footer_size + 8..non_footer_size + 20].to_vec();
+        footer_to_check.resize(20, 0);
+        ensure!(
+            (md5hash(&footer_to_check) >> 64) as u64 == footer_checksum,
+            "archive index footer checksum"
+        );
+    };
     let mut map = HashMap::<u128, (usize, usize)>::new();
     let mut p = data;
     while p.remaining() >= 100 {
