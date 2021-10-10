@@ -276,7 +276,7 @@ struct ArchiveIndex {
     map: HashMap<u128, (usize, usize)>,
 }
 
-fn parse_archive_index(data: &[u8]) -> Result<ArchiveIndex> {
+fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
     ensure!(data.len() >= 28, "truncated archive index data");
     let non_footer_size = data.len() - 28;
     let bytes_per_block = 4096 + 24;
@@ -286,6 +286,7 @@ fn parse_archive_index(data: &[u8]) -> Result<ArchiveIndex> {
         "invalid archive index format"
     );
     let mut footer = &data[non_footer_size..];
+    ensure!(md5hash(footer) == name, "bad footer name");
     let toc = &data[non_footer_size - num_blocks * 24..non_footer_size];
     ensure!(
         (md5hash(toc) >> 64) as u64 == footer.get_u64(),
@@ -414,13 +415,12 @@ async fn main() -> Result<()> {
             .split(" ")
             .map(parse_hash)
             .collect::<Result<Vec<u128>>>()?;
-        let indices =
-            futures::future::join_all(archives.into_iter().map(|h| async move {
-                parse_archive_index(&(cdn_fetch("data", h, ".index").await?))
-            }))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<ArchiveIndex>>>()?;
+        let indices = futures::future::join_all(archives.into_iter().map(|h| async move {
+            parse_archive_index(h, &(cdn_fetch("data", h, ".index").await?))
+        }))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<ArchiveIndex>>>()?;
         println!("{:#?}", indices[0]);
         Result::<ArchiveIndex>::Ok(ArchiveIndex {
             map: indices[0].map.clone(),
