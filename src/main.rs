@@ -280,13 +280,17 @@ fn parse_archive_index(data: &[u8]) -> Result<ArchiveIndex> {
     ensure!(data.len() >= 28, "truncated archive index data");
     let non_footer_size = data.len() - 28;
     let bytes_per_block = 4096 + 24;
-    let _num_blocks = non_footer_size / bytes_per_block;
+    let num_blocks = non_footer_size / bytes_per_block;
     ensure!(
         non_footer_size % bytes_per_block == 0,
         "invalid archive index format"
     );
     let mut footer = &data[non_footer_size..];
-    let _toc_checksum = footer.get_u64();
+    let toc = &data[non_footer_size - num_blocks * 24..non_footer_size];
+    ensure!(
+        (md5hash(toc) >> 64) as u64 == footer.get_u64(),
+        "archive index toc checksum"
+    );
     ensure!(footer.get_u8() == 1, "unexpected archive index version");
     ensure!(
         footer.get_u8() == 0,
