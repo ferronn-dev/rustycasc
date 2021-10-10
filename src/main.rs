@@ -272,10 +272,53 @@ fn parse_root(data: &[u8]) -> Result<Root> {
 }
 
 #[derive(Debug)]
-struct ArchiveIndex {}
+struct ArchiveIndex {
+    map: HashMap<u128, (usize, usize)>,
+}
 
-fn parse_archive_index(_data: &[u8]) -> Result<ArchiveIndex> {
-    Ok(ArchiveIndex {})
+fn parse_archive_index(data: &[u8]) -> Result<ArchiveIndex> {
+    ensure!(data.len() >= 28, "truncated archive index data");
+    let non_footer_size = data.len() - 28;
+    let bytes_per_block = 4096 + 24;
+    let _num_blocks = non_footer_size / bytes_per_block;
+    ensure!(
+        non_footer_size % bytes_per_block == 0,
+        "invalid archive index format"
+    );
+    let mut footer = &data[non_footer_size..];
+    let _toc_checksum = footer.get_u64();
+    ensure!(footer.get_u8() == 1, "unexpected archive index version");
+    ensure!(
+        footer.get_u8() == 0,
+        "unexpected archive index nonzero byte"
+    );
+    ensure!(
+        footer.get_u8() == 0,
+        "unexpected archive index nonzero byte"
+    );
+    ensure!(footer.get_u8() == 4, "unexpected archive index block size");
+    ensure!(
+        footer.get_u8() == 4,
+        "unexpected archive index offset bytes"
+    );
+    ensure!(footer.get_u8() == 4, "unexpected archive index size bytes");
+    ensure!(footer.get_u8() == 16, "unexpected archive index key size");
+    ensure!(
+        footer.get_u8() == 8,
+        "unexpected archive index checksum size"
+    );
+    let _num_elements = footer.get_u32_le();
+    let _footer_checksum = footer.get_u64();
+    assert!(!footer.has_remaining());
+    let mut map = HashMap::<u128, (usize, usize)>::new();
+    let mut p = data;
+    while p.remaining() >= 100 {
+        let ekey = p.get_u128();
+        let size = p.get_u32_le().try_into()?;
+        let offset = p.get_u32_le().try_into()?;
+        map.insert(ekey, (size, offset));
+    }
+    Ok(ArchiveIndex { map })
 }
 
 #[derive(StructOpt)]
@@ -367,7 +410,9 @@ async fn main() -> Result<()> {
             .into_iter()
             .collect::<Result<Vec<ArchiveIndex>>>()?;
         println!("{:#?}", indices[0]);
-        Result::<ArchiveIndex>::Ok(ArchiveIndex {})
+        Result::<ArchiveIndex>::Ok(ArchiveIndex {
+            map: indices[0].map.clone(),
+        })
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
