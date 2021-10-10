@@ -278,6 +278,10 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    do_main().await
+}
+
+async fn do_main<'a>() -> Result<()> {
     let cli = Cli::from_args_safe()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
@@ -323,7 +327,7 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
-    let cdn_fetch = |tag: &'static str, hash: u128| async move {
+    let cdn_fetch = |tag: &'a str, hash: u128| async move {
         let hashstr = format!("{:032x}", hash);
         let cache_file = format!("cache/{}.{}", tag, hashstr);
         let cached = std::fs::read(&cache_file);
