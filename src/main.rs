@@ -278,10 +278,6 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    do_main().await
-}
-
-async fn do_main<'a>() -> Result<()> {
     let cli = Cli::from_args_safe()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
@@ -327,23 +323,27 @@ async fn do_main<'a>() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
-    let cdn_fetch = |tag: &'a str, hash: u128| async move {
-        let hashstr = format!("{:032x}", hash);
-        let cache_file = format!("cache/{}.{}", tag, hashstr);
+    let do_cdn_fetch = |path: String, cache_file: String| async move {
+        let cache_file = format!("cache/{}", cache_file);
         let cached = std::fs::read(&cache_file);
         if cached.is_ok() {
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
-        let suffix = format!("{}/{}/{}/{}", tag, &hashstr[0..2], &hashstr[2..4], hashstr);
         for cdn_prefix in cdn_prefixes {
-            let data = fetch(format!("{}/{}", cdn_prefix, suffix)).await;
+            let data = fetch(format!("{}/{}", cdn_prefix, path)).await;
             if data.is_ok() {
                 let data = data.unwrap();
                 std::fs::write(&cache_file, &data)?;
                 return Ok(data);
             }
         }
-        bail!("fetch failed on all hosts: {}", suffix)
+        bail!("fetch failed on all hosts: {}", path)
+    };
+    let cdn_fetch = |tag: &'static str, hash: u128| async move {
+        let h = format!("{:032x}", hash);
+        let path = format!("{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h);
+        let cache_file = format!("{}.{}", tag, h);
+        do_cdn_fetch(path, cache_file).await
     };
     let cdninfo = async {
         let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
