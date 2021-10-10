@@ -346,13 +346,16 @@ async fn main() -> Result<()> {
         do_cdn_fetch(path, cache_file).await
     };
     let cdninfo = async {
-        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
-            .get("archives")
-            .context("missing archives in cdninfo")?
-            .split(" ")
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
-        Result::<Vec<String>>::Ok(archives)
+        let archives: Vec<u128> =
+            parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
+                .get("archives")
+                .context("missing archives in cdninfo")?
+                .split(" ")
+                .map(parse_hash)
+                .collect::<Result<Vec<u128>>>()?;
+        let _ = futures::future::join_all(archives.iter().map(|h| cdn_fetch("data", *h, ".index")))
+            .await;
+        Result::<Vec<u128>>::Ok(archives)
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
