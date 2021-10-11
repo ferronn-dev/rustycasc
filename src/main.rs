@@ -466,13 +466,25 @@ async fn main() -> Result<()> {
     };
     let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
     let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
-    println!(
-        "{:#?}",
-        archive_index
+    {
+        let (archive, size, offset) = archive_index
             .map
             .get(&encoding.c2e(root.f2c(1267335)?)?)
-            .context("missing index key")
-    );
+            .context("missing index key")?;
+        let h = format!("{:032x}", archive);
+        let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
+        let response = client
+            .get(url)
+            .header("Range", format!("bytes={}-{}", offset, offset + size - 1))
+            .send()
+            .await
+            .context("send fail")?;
+        ensure!(response.status().is_success(), "status fail");
+        std::fs::write(
+            "ManifestInterfaceTOCData.db2",
+            &parse_blte(&response.bytes().await.context("recv fail")?)?,
+        )?;
+    }
     Ok(())
 }
 
