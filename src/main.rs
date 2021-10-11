@@ -435,7 +435,7 @@ async fn main() -> Result<()> {
         do_cdn_fetch(path, cache_file).await
     };
     let archive_index = async {
-        let future = futures::future::join_all(
+        let index_shards = futures::future::join_all(
             parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
                 .get("archives")
                 .context("missing archives in cdninfo")?
@@ -447,7 +447,7 @@ async fn main() -> Result<()> {
         )
         .await;
         let mut map = HashMap::<u128, (usize, usize)>::new();
-        for r in future.into_iter() {
+        for r in index_shards.into_iter() {
             map.extend(r?.map.drain());
         }
         return Result::<ArchiveIndex>::Ok(ArchiveIndex { map });
