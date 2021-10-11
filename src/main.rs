@@ -435,28 +435,22 @@ async fn main() -> Result<()> {
         do_cdn_fetch(path, cache_file).await
     };
     let archive_index = async {
-        Result::<ArchiveIndex>::Ok(ArchiveIndex {
-            map: futures::future::join_all(
-                parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
-                    .get("archives")
-                    .context("missing archives in cdninfo")?
-                    .split(" ")
-                    .map(|s| async move {
-                        let h = parse_hash(s)?;
-                        parse_archive_index(h, &(cdn_fetch("data", h, ".index").await?))
-                    }),
-            )
-            .await
-            .into_iter()
-            .collect::<Result<Vec<ArchiveIndex>>>()?
-            .into_iter()
-            .map(|x| x.map)
-            .reduce(|mut acc, mut x| {
-                acc.extend(x.drain());
-                acc
-            })
-            .context("no index data")?,
-        })
+        let future = futures::future::join_all(
+            parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
+                .get("archives")
+                .context("missing archives in cdninfo")?
+                .split(" ")
+                .map(|s| async move {
+                    let h = parse_hash(s)?;
+                    parse_archive_index(h, &(cdn_fetch("data", h, ".index").await?))
+                }),
+        )
+        .await;
+        let mut map = HashMap::<u128, (usize, usize)>::new();
+        for r in future.into_iter() {
+            map.extend(r?.map.drain());
+        }
+        return Result::<ArchiveIndex>::Ok(ArchiveIndex { map });
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
