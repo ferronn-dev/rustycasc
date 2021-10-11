@@ -273,7 +273,7 @@ fn parse_root(data: &[u8]) -> Result<Root> {
 
 #[derive(Debug)]
 struct ArchiveIndex {
-    map: HashMap<u128, (usize, usize)>,
+    map: HashMap<u128, (u128, usize, usize)>,
 }
 
 fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
@@ -324,7 +324,7 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
             "archive index footer checksum"
         );
     };
-    let mut map = HashMap::<u128, (usize, usize)>::new();
+    let mut map = HashMap::<u128, (u128, usize, usize)>::new();
     let mut p = &data[..non_footer_size - toc_size];
     let mut entries = &toc[..(16 * num_blocks)];
     let mut blockhashes = &toc[(16 * num_blocks)..];
@@ -342,7 +342,7 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
             let size = block.get_u32().try_into()?;
             let offset = block.get_u32().try_into()?;
             ensure!(
-                map.insert(ekey, (size, offset)).is_none(),
+                map.insert(ekey, (name, size, offset)).is_none(),
                 "duplicate key in index"
             );
             if ekey == last_ekey {
@@ -446,7 +446,7 @@ async fn main() -> Result<()> {
                 }),
         )
         .await;
-        let mut map = HashMap::<u128, (usize, usize)>::new();
+        let mut map = HashMap::<u128, (u128, usize, usize)>::new();
         for r in index_shards.into_iter() {
             map.extend(r?.map.drain());
         }
