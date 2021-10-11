@@ -313,7 +313,7 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
         footer.get_u8() == 8,
         "unexpected archive index checksum size"
     );
-    let _num_elements = footer.get_u32_le();
+    let num_elements = footer.get_u32_le().try_into()?;
     let footer_checksum = footer.get_u64();
     assert!(!footer.has_remaining());
     {
@@ -324,23 +324,39 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
             "archive index footer checksum"
         );
     };
+    let mut map = HashMap::<u128, (usize, usize)>::new();
     let mut p = &data[..non_footer_size - toc_size];
     let mut entries = &toc[..(16 * num_blocks)];
     let mut blockhashes = &toc[(16 * num_blocks)..];
     for _ in 0..num_blocks {
-        let block = &p[..4096];
-        let _last_ekey = entries.get_u128();
+        let mut block = &p[..4096];
         let block_checksum = blockhashes.get_u64();
         ensure!(
             (md5hash(block) >> 64) as u64 == block_checksum,
             "archive index block checksum"
         );
+        let last_ekey = entries.get_u128();
+        let mut found = false;
+        while block.remaining() >= 24 {
+            let ekey = block.get_u128();
+            let size = block.get_u32().try_into()?;
+            let offset = block.get_u32().try_into()?;
+            ensure!(
+                map.insert(ekey, (size, offset)).is_none(),
+                "duplicate key in index"
+            );
+            if ekey == last_ekey {
+                found = true;
+                break;
+            }
+        }
+        ensure!(found, "last ekey mismatch");
         p.advance(4096);
     }
     assert!(!p.has_remaining());
     assert!(!entries.has_remaining());
     assert!(!blockhashes.has_remaining());
-    let map = HashMap::<u128, (usize, usize)>::new();
+    ensure!(map.len() == num_elements, "num_elements wrong in index");
     Ok(ArchiveIndex { map })
 }
 
