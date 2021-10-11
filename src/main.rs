@@ -435,21 +435,27 @@ async fn main() -> Result<()> {
         do_cdn_fetch(path, cache_file).await
     };
     let archive_index = async {
-        let archives = parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
-            .get("archives")
-            .context("missing archives in cdninfo")?
-            .split(" ")
-            .map(parse_hash)
-            .collect::<Result<Vec<u128>>>()?;
-        let indices = futures::future::join_all(archives.into_iter().map(|h| async move {
-            parse_archive_index(h, &(cdn_fetch("data", h, ".index").await?))
-        }))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<ArchiveIndex>>>()?;
-        println!("{:#?}", indices[0]);
         Result::<ArchiveIndex>::Ok(ArchiveIndex {
-            map: indices[0].map.clone(),
+            map: futures::future::join_all(
+                parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
+                    .get("archives")
+                    .context("missing archives in cdninfo")?
+                    .split(" ")
+                    .map(|s| async move {
+                        let h = parse_hash(s)?;
+                        parse_archive_index(h, &(cdn_fetch("data", h, ".index").await?))
+                    }),
+            )
+            .await
+            .into_iter()
+            .collect::<Result<Vec<ArchiveIndex>>>()?
+            .into_iter()
+            .map(|x| x.map)
+            .reduce(|mut acc, mut x| {
+                acc.extend(x.drain());
+                acc
+            })
+            .context("no index data")?,
         })
     };
     let encoding_and_root = async {
@@ -465,8 +471,14 @@ async fn main() -> Result<()> {
         Result::<(Encoding, Root)>::Ok((encoding, root))
     };
     let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
-    let (_archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
-    let _tocbase = cdn_fetch("data", encoding.c2e(root.f2c(1267335)?)?, "").await?;
+    let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
+    println!(
+        "{:#?}",
+        archive_index
+            .map
+            .get(&encoding.c2e(root.f2c(1267335)?)?)
+            .context("missing index key")
+    );
     Ok(())
 }
 
