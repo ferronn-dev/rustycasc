@@ -287,7 +287,8 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
     );
     let mut footer = &data[non_footer_size..];
     ensure!(md5hash(footer) == name, "bad footer name");
-    let toc = &data[non_footer_size - num_blocks * 24..non_footer_size];
+    let toc_size = num_blocks * 24;
+    let toc = &data[non_footer_size - toc_size..non_footer_size];
     ensure!(
         (md5hash(toc) >> 64) as u64 == footer.get_u64(),
         "archive index toc checksum"
@@ -313,9 +314,9 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
         "unexpected archive index checksum size"
     );
     let _num_elements = footer.get_u32_le();
+    let footer_checksum = footer.get_u64();
+    assert!(!footer.has_remaining());
     {
-        let footer_checksum = footer.get_u64();
-        assert!(!footer.has_remaining());
         let mut footer_to_check = data[non_footer_size + 8..non_footer_size + 20].to_vec();
         footer_to_check.resize(20, 0);
         ensure!(
@@ -323,14 +324,23 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
             "archive index footer checksum"
         );
     };
-    let mut map = HashMap::<u128, (usize, usize)>::new();
-    let mut p = data;
-    while p.remaining() >= 100 {
-        let ekey = p.get_u128();
-        let size = p.get_u32_le().try_into()?;
-        let offset = p.get_u32_le().try_into()?;
-        map.insert(ekey, (size, offset));
+    let mut p = &data[..non_footer_size - toc_size];
+    let mut entries = &toc[..(16 * num_blocks)];
+    let mut blockhashes = &toc[(16 * num_blocks)..];
+    for _ in 0..num_blocks {
+        let block = &p[..4096];
+        let _last_ekey = entries.get_u128();
+        let block_checksum = blockhashes.get_u64();
+        ensure!(
+            (md5hash(block) >> 64) as u64 == block_checksum,
+            "archive index block checksum"
+        );
+        p.advance(4096);
     }
+    assert!(!p.has_remaining());
+    assert!(!entries.has_remaining());
+    assert!(!blockhashes.has_remaining());
+    let map = HashMap::<u128, (usize, usize)>::new();
     Ok(ArchiveIndex { map })
 }
 
