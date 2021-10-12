@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use nom_derive::{NomLE, Parse};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use structopt::StructOpt;
@@ -360,6 +361,39 @@ fn parse_archive_index(name: u128, data: &[u8]) -> Result<ArchiveIndex> {
     Ok(ArchiveIndex { map })
 }
 
+#[derive(Debug, NomLE)]
+struct WDC3Header {
+    magic: [u8; 4],
+    record_count: u32,
+    field_count: u32,
+    record_size: u32,
+    string_table_size: u32,
+    table_hash: u32,
+    layout_hash: u32,
+    min_id: u32,
+    max_id: u32,
+    locale: u32,
+    flags: u16,
+    id_index: u16,
+    total_field_count: u32,
+    bitpacked_data_offset: u32,
+    lookup_column_count: u32,
+    field_storage_info_size: u32,
+    common_data_size: u32,
+    pallet_data_size: u32,
+    section_count: u32,
+}
+
+fn parse_wdc3(data: &[u8]) -> Result<()> {
+    println!(
+        "{:#?}",
+        WDC3Header::parse(data)
+            .map_err(|_| anyhow::Error::msg("parse error"))?
+            .1
+    );
+    Ok(())
+}
+
 #[derive(StructOpt)]
 struct Cli {
     product: String,
@@ -368,6 +402,9 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::from_args_safe()?;
+    if cli.product == "db2" {
+        return parse_wdc3(&std::fs::read("ManifestInterfaceTOCData.db2")?);
+    }
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
     let fetch = |url| async {

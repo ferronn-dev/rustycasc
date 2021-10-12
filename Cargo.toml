@@ -11,6 +11,8 @@ bytes = "*"
 futures = "*"
 md5 = "0.7.0"
 miniz_oxide = "0.4.4"
+nom = "*"
+nom-derive = "*"
 reqwest = "*"
 structopt = "0.3.13"
 tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
