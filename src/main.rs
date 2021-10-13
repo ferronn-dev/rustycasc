@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use nom_derive::{NomLE, Parse};
+use nom_derive::{nom, NomLE, Parse};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use structopt::StructOpt;
@@ -384,14 +384,65 @@ struct WDC3Header {
     section_count: u32,
 }
 
-fn parse_wdc3(data: &[u8]) -> Result<()> {
-    println!(
-        "{:#?}",
-        WDC3Header::parse(data)
-            .map_err(|_| anyhow::Error::msg("parse error"))?
-            .1
-    );
-    Ok(())
+#[derive(Debug, NomLE)]
+struct WDC3SectionHeader {
+    tact_key_hash: u64,
+    file_offset: u32,
+    record_count: u32,
+    string_table_size: u32,
+    offset_records_end: u32,
+    id_list_size: u32,
+    relationship_data_size: u32,
+    offset_map_id_count: u32,
+    copy_table_count: u32,
+}
+
+#[derive(Debug, NomLE)]
+struct WDC3FieldStructure {
+    size: i16,
+    position: u16,
+}
+
+#[derive(Debug, NomLE)]
+struct WDC3FieldStorageInfo {
+    field_offset_bits: u16,
+    field_size_bits: u16,
+    additional_data_size: u32,
+    storage_type: u32,
+    compression1: u32,
+    compression2: u32,
+    compression3: u32,
+}
+
+#[derive(Debug, NomLE)]
+struct WDC3Section {
+    stuff: Vec<u8>,
+    id_list: Vec<u32>,
+    copy_table: Vec<(u32, u32)>,
+    offset_map: Vec<(u32, u16)>,
+}
+
+#[derive(Debug, NomLE)]
+struct WDC3 {
+    header: WDC3Header,
+    #[nom(Count = "header.section_count")]
+    section_headers: Vec<WDC3SectionHeader>,
+    #[nom(Count = "header.total_field_count")]
+    fields: Vec<WDC3FieldStructure>,
+    #[nom(Count = "header.total_field_count")]
+    field_info: Vec<WDC3FieldStorageInfo>,
+    #[nom(Count = "header.pallet_data_size")]
+    pallet_data: Vec<u8>,
+    #[nom(Count = "header.common_data_size")]
+    common_data: Vec<u8>,
+    //    #[nom(Count = "header.section_count")]
+    //    sections: Vec<WDC3Section>,
+}
+
+fn parse_wdc3(data: &[u8]) -> Result<WDC3> {
+    Ok(WDC3::parse(data)
+        .map_err(|_| anyhow::Error::msg("parse error"))?
+        .1)
 }
 
 #[derive(StructOpt)]
@@ -403,7 +454,11 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::from_args_safe()?;
     if cli.product == "db2" {
-        return parse_wdc3(&std::fs::read("ManifestInterfaceTOCData.db2")?);
+        println!(
+            "{:#?}",
+            parse_wdc3(&std::fs::read("ManifestInterfaceTOCData.db2")?)?
+        );
+        return Ok(());
     }
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
