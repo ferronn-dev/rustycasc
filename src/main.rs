@@ -493,7 +493,11 @@ async fn main() -> Result<()> {
     if cli.product == "db2" {
         println!(
             "{:#?}",
-            parse_wdc3(&std::fs::read("ManifestInterfaceTOCData.db2")?)?
+            parse_wdc3(&std::fs::read("ManifestInterfaceTOCData.db2")?)?.sections[0]
+                .string_table
+                .split(|b| *b == 0)
+                .map(|s| String::from_utf8(s.to_vec()).context("parsing tocdata"))
+                .collect::<Result<Vec<String>>>()?
         );
         return Ok(());
     }
