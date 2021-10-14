@@ -415,11 +415,48 @@ struct WDC3FieldStorageInfo {
 }
 
 #[derive(Debug, NomLE)]
+struct WDC3CopyTableEntry {
+    id_of_new_row: u32,
+    id_of_copied_row: u32,
+}
+
+#[derive(Debug, NomLE)]
+struct WDC3OffsetMapEntry {
+    offset: u32,
+    size: u16,
+}
+
+#[derive(Debug, NomLE)]
+#[nom(ExtraArgs(header: &WDC3SectionHeader))]
 struct WDC3Section {
-    stuff: Vec<u8>,
+    #[nom(Count = "(header.record_count * 4) as usize")]
+    records: Vec<u8>,
+    #[nom(Count = "header.string_table_size")]
+    string_table: Vec<u8>,
+    #[nom(Count = "(header.id_list_size / 4) as usize")]
     id_list: Vec<u32>,
-    copy_table: Vec<(u32, u32)>,
-    offset_map: Vec<(u32, u16)>,
+    #[nom(Count = "header.copy_table_count")]
+    copy_table: Vec<WDC3CopyTableEntry>,
+    #[nom(Count = "header.offset_map_id_count")]
+    offset_map: Vec<WDC3OffsetMapEntry>,
+    #[nom(Count = "header.relationship_data_size")]
+    relationship_data: Vec<u8>,
+}
+
+trait SectionsParser {
+    fn parse_sections<'a>(&self, i: &'a [u8]) -> nom::IResult<&'a [u8], Vec<WDC3Section>>;
+}
+
+impl SectionsParser for Vec<WDC3SectionHeader> {
+    fn parse_sections<'a>(&self, mut i: &'a [u8]) -> nom::IResult<&'a [u8], Vec<WDC3Section>> {
+        let mut v = Vec::<WDC3Section>::new();
+        for h in self {
+            let next = WDC3Section::parse(i, h)?;
+            v.push(next.1);
+            i = next.0;
+        }
+        Ok((i, v))
+    }
 }
 
 #[derive(Debug, NomLE)]
@@ -435,8 +472,8 @@ struct WDC3 {
     pallet_data: Vec<u8>,
     #[nom(Count = "header.common_data_size")]
     common_data: Vec<u8>,
-    //    #[nom(Count = "header.section_count")]
-    //    sections: Vec<WDC3Section>,
+    #[nom(Parse = "section_headers.parse_sections")]
+    sections: Vec<WDC3Section>,
 }
 
 fn parse_wdc3(data: &[u8]) -> Result<WDC3> {
