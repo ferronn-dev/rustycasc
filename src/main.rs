@@ -443,23 +443,21 @@ struct WDC3Section {
     relationship_data: Vec<u8>,
 }
 
-trait SectionsParser {
-    fn parse_sections<'a>(&self, i: &'a [u8]) -> nom::IResult<&'a [u8], Vec<WDC3Section>>;
-}
-
-impl SectionsParser for Vec<WDC3SectionHeader> {
-    fn parse_sections<'a>(&self, mut i: &'a [u8]) -> nom::IResult<&'a [u8], Vec<WDC3Section>> {
-        let mut v = Vec::<WDC3Section>::new();
-        for h in self {
-            let next = WDC3Section::parse(i, h)?;
-            v.push(next.1);
-            i = next.0;
-        }
-        Ok((i, v))
+fn parse_sections<'a>(
+    headers: &Vec<WDC3SectionHeader>,
+    mut i: &'a [u8],
+) -> nom::IResult<&'a [u8], Vec<WDC3Section>> {
+    let mut v = Vec::<WDC3Section>::new();
+    for h in headers {
+        let next = WDC3Section::parse(i, h)?;
+        v.push(next.1);
+        i = next.0;
     }
+    Ok((i, v))
 }
 
 #[derive(Debug, NomLE)]
+#[nom(Complete)]
 struct WDC3 {
     header: WDC3Header,
     #[nom(Count = "header.section_count")]
@@ -472,7 +470,7 @@ struct WDC3 {
     pallet_data: Vec<u8>,
     #[nom(Count = "header.common_data_size")]
     common_data: Vec<u8>,
-    #[nom(Parse = "section_headers.parse_sections")]
+    #[nom(Parse = "|i| parse_sections(&section_headers, i)")]
     sections: Vec<WDC3Section>,
 }
 
