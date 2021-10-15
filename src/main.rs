@@ -131,7 +131,7 @@ fn parse_encoding(data: &[u8]) -> Result<Encoding> {
     let espec_size = p.get_u32().try_into()?;
     ensure!(p.remaining() >= espec_size, "truncated espec table");
     let especs = p[0..espec_size]
-        .split(|b| *b == b'0')
+        .split(|b| *b == 0)
         .map(|s| String::from_utf8(s.to_vec()).context("parsing encoding espec"))
         .collect::<Result<Vec<String>>>()?;
     p.advance(espec_size);
