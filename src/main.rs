@@ -427,29 +427,30 @@ struct WDC3OffsetMapEntry {
 }
 
 #[derive(Debug, NomLE)]
-#[nom(ExtraArgs(header: &WDC3SectionHeader))]
+#[nom(ExtraArgs(header: &WDC3Header, section_header: &WDC3SectionHeader))]
 struct WDC3Section {
-    #[nom(Count = "(header.record_count * 4) as usize")]
+    #[nom(Count = "(section_header.record_count * header.record_size) as usize")]
     records: Vec<u8>,
-    #[nom(Count = "header.string_table_size")]
+    #[nom(Count = "section_header.string_table_size")]
     string_table: Vec<u8>,
-    #[nom(Count = "(header.id_list_size / 4) as usize")]
+    #[nom(Count = "(section_header.id_list_size / 4) as usize")]
     id_list: Vec<u32>,
-    #[nom(Count = "header.copy_table_count")]
+    #[nom(Count = "section_header.copy_table_count")]
     copy_table: Vec<WDC3CopyTableEntry>,
-    #[nom(Count = "header.offset_map_id_count")]
+    #[nom(Count = "section_header.offset_map_id_count")]
     offset_map: Vec<WDC3OffsetMapEntry>,
-    #[nom(Count = "header.relationship_data_size")]
+    #[nom(Count = "section_header.relationship_data_size")]
     relationship_data: Vec<u8>,
 }
 
 fn parse_sections<'a>(
-    headers: &Vec<WDC3SectionHeader>,
+    header: &WDC3Header,
+    section_headers: &Vec<WDC3SectionHeader>,
     mut i: &'a [u8],
 ) -> nom::IResult<&'a [u8], Vec<WDC3Section>> {
     let mut v = Vec::<WDC3Section>::new();
-    for h in headers {
-        let next = WDC3Section::parse(i, h)?;
+    for h in section_headers {
+        let next = WDC3Section::parse(i, header, h)?;
         v.push(next.1);
         i = next.0;
     }
@@ -470,7 +471,7 @@ struct WDC3 {
     pallet_data: Vec<u8>,
     #[nom(Count = "header.common_data_size")]
     common_data: Vec<u8>,
-    #[nom(Parse = "|i| parse_sections(&section_headers, i)")]
+    #[nom(Parse = "|i| parse_sections(&header, &section_headers, i)")]
     sections: Vec<WDC3Section>,
 }
 
