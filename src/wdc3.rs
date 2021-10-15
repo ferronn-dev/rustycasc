@@ -90,9 +90,9 @@ fn parse_sections<'a>(
 ) -> nom::IResult<&'a [u8], Vec<Section>> {
     let mut v = Vec::<Section>::new();
     for h in section_headers {
-        let next = Section::parse(i, header, h)?;
-        v.push(next.1);
-        i = next.0;
+        let (j, section) = Section::parse(i, header, h)?;
+        v.push(section);
+        i = j;
     }
     Ok((i, v))
 }
