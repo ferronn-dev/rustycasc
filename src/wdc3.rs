@@ -1,4 +1,7 @@
-use anyhow::{Context, Error, Result};
+use std::{collections::HashMap, convert::TryInto};
+
+use anyhow::{ensure, Error, Result};
+use bytes::Buf;
 use nom_derive::{nom, NomLE, Parse};
 
 #[derive(Debug, NomLE)]
@@ -125,13 +128,31 @@ struct File {
     sections: Vec<Section>,
 }
 
-pub fn strings(data: &[u8]) -> Result<Vec<String>> {
-    File::parse(data)
-        .map_err(|_| Error::msg("parse error"))?
-        .1
-        .sections[0]
-        .string_table
-        .split(|b| *b == 0)
-        .map(|s| String::from_utf8(s.to_vec()).context("parsing tocdata"))
-        .collect::<Result<Vec<String>>>()
+pub fn strings(data: &[u8]) -> Result<HashMap<u32, String>> {
+    let file = File::parse(data).map_err(|_| Error::msg("parse error"))?.1;
+    ensure!(file.header.flags == 4, "unsupported flags");
+    ensure!(file.sections.len() == 1, "unsupported number of sections");
+    let ref section = file.sections[0];
+    ensure!(
+        section.id_list.len() == section.records.len(),
+        "unexpected record count"
+    );
+    let offset = file.header.record_size as usize * section.records.len();
+    let mut m = HashMap::<u32, String>::new();
+    for (id, rec) in section.id_list.iter().zip(section.records.iter()) {
+        let start: usize = rec.data.as_slice().get_u32_le().try_into()?;
+        m.insert(
+            *id,
+            String::from_utf8(
+                section
+                    .string_table
+                    .iter()
+                    .skip(start - offset)
+                    .take_while(|&b| *b != 0)
+                    .cloned()
+                    .collect(),
+            )?,
+        );
+    }
+    Ok(m)
 }
