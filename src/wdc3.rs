@@ -55,6 +55,13 @@ struct FieldStorageInfo {
 }
 
 #[derive(Debug, NomLE)]
+#[nom(ExtraArgs(header: &Header))]
+struct Record {
+    #[nom(Count = "header.record_size")]
+    data: Vec<u8>,
+}
+
+#[derive(Debug, NomLE)]
 struct CopyTableEntry {
     id_of_new_row: u32,
     id_of_copied_row: u32,
@@ -69,8 +76,11 @@ struct OffsetMapEntry {
 #[derive(Debug, NomLE)]
 #[nom(ExtraArgs(header: &Header, section_header: &SectionHeader))]
 struct Section {
-    #[nom(Count = "(section_header.record_count * header.record_size) as usize")]
-    records: Vec<u8>,
+    #[nom(
+        Count = "section_header.record_count",
+        Parse = "|i| Record::parse(i, header)"
+    )]
+    records: Vec<Record>,
     #[nom(Count = "section_header.string_table_size")]
     string_table: Vec<u8>,
     #[nom(Count = "(section_header.id_list_size / 4) as usize")]
