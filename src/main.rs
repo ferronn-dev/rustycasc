@@ -62,13 +62,6 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::from_args_safe()?;
-    if cli.product == "db2" {
-        println!(
-            "{:#?}",
-            wdc3::strings(&std::fs::read("ManifestInterfaceTOCData.db2")?)?
-        );
-        return Ok(());
-    }
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
     let fetch = |url| async {
@@ -181,10 +174,20 @@ async fn main() -> Result<()> {
             .await
             .context("send fail")?;
         ensure!(response.status().is_success(), "status fail");
-        std::fs::write(
-            "ManifestInterfaceTOCData.db2",
-            &blte::parse(&response.bytes().await.context("recv fail")?)?,
-        )?;
+        for (fdid, path) in
+            wdc3::strings(&blte::parse(&response.bytes().await.context("recv fail")?)?)?
+        {
+            match root.f2c(fdid as i32) {
+                Ok(c) => {
+                    let e = encoding.c2e(c)?;
+                    let (a, s, o) = archive_index.map.get(&e).context("missing index key")?;
+                    println!("{} {} {} {}", e, a, s, o);
+                }
+                Err(_) => {
+                    println!("nothing for {} {}", fdid, path)
+                }
+            }
+        }
     }
     Ok(())
 }
