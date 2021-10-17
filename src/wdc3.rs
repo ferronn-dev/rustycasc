@@ -137,17 +137,22 @@ pub fn strings(data: &[u8]) -> Result<HashMap<u32, String>> {
         section.id_list.len() == section.records.len(),
         "unexpected record count"
     );
-    let offset = file.header.record_size as usize * section.records.len();
+    let rsize: usize = file.header.record_size.try_into()?;
     let mut m = HashMap::<u32, String>::new();
-    for (id, rec) in section.id_list.iter().zip(section.records.iter()) {
-        let start: usize = rec.data.as_slice().get_u32_le().try_into()?;
+    for (k, (id, rec)) in section
+        .id_list
+        .iter()
+        .zip(section.records.iter())
+        .enumerate()
+    {
+        let value: usize = rec.data.as_slice().get_u32_le().try_into()?;
         m.insert(
             *id,
             String::from_utf8(
                 section
                     .string_table
                     .iter()
-                    .skip(start - offset)
+                    .skip(value - (section.records.len() - k) * rsize)
                     .take_while(|&b| *b != 0)
                     .cloned()
                     .collect(),
