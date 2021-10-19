@@ -6,7 +6,7 @@ use bytes::Buf;
 struct RootData {
     fdid: u32,
     content_key: u128,
-    name_hash: u64,
+    name_hash: Option<u64>,
 }
 
 pub struct Root {
@@ -58,11 +58,11 @@ pub fn parse(data: &[u8]) -> Result<Root> {
             fdids.push(fdid.try_into()?)
         }
         let mut content_keys = Vec::<u128>::new();
-        let mut name_hashes = Vec::<u64>::new();
+        let mut name_hashes = Vec::<Option<u64>>::new();
         if interleave {
             for _ in 0..num_records {
                 content_keys.push(p.get_u128());
-                name_hashes.push(p.get_u64_le());
+                name_hashes.push(Some(p.get_u64_le()));
             }
         } else {
             for _ in 0..num_records {
@@ -70,10 +70,10 @@ pub fn parse(data: &[u8]) -> Result<Root> {
             }
             if !can_skip || content_flags & 0x10000000 == 0 {
                 for _ in 0..num_records {
-                    name_hashes.push(p.get_u64_le());
+                    name_hashes.push(Some(p.get_u64_le()));
                 }
             } else {
-                name_hashes.resize(num_records, 0);
+                name_hashes.resize(num_records, None);
             }
         }
         for i in 0..num_records {
@@ -93,7 +93,7 @@ pub fn parse(data: &[u8]) -> Result<Root> {
         nmap: result
             .iter()
             .enumerate()
-            .map(|(k, d)| (d.name_hash, k))
+            .filter_map(|(k, d)| d.name_hash.map(|h| (h, k)))
             .collect(),
         data: result,
     })
