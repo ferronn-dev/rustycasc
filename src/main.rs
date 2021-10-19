@@ -208,13 +208,14 @@ async fn main() -> Result<()> {
         )
         .await
         .into_iter()
-        .collect::<Result<Vec<Vec<u8>>>>()?
-        .into_iter()
-        .map(|x| String::from_utf8(x).context("utf8 conversion"))
-        .collect::<Result<Vec<String>>>()?
-        .into_iter()
-        .map(|x| x.lines().map(|y| y.to_string()).collect::<Vec<String>>())
-        .collect::<Vec<Vec<String>>>()
+        .map(|r| {
+            Ok(std::str::from_utf8(&r?)
+                .context("utf8 conversion")?
+                .lines()
+                .map(|y| y.to_string())
+                .collect::<Vec<String>>())
+        })
+        .collect::<Result<Vec<Vec<String>>>>()?
     );
     Ok(())
 }
