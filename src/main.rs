@@ -195,7 +195,9 @@ async fn main() -> Result<()> {
             .await
             .context("send fail")?;
         ensure!(response.status().is_success(), "status fail");
-        blte::parse(&response.bytes().await.context("recv fail")?)
+        let bytes = blte::parse(&response.bytes().await.context("recv fail")?)?;
+        ensure!(util::md5hash(&bytes) == ckey, "checksum fail");
+        Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
     let fetch_name = |name| async move { fetch_content(root.n2c(name)?).await };
