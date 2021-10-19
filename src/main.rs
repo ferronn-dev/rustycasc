@@ -7,6 +7,7 @@ mod wdc3;
 
 use anyhow::{bail, ensure, Context, Result};
 use bytes::Bytes;
+use log::trace;
 use std::collections::HashMap;
 use structopt::StructOpt;
 
@@ -62,15 +63,31 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::from_args_safe()?;
+    stderrlog::new()
+        .module(module_path!())
+        .verbosity(100)
+        .init()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let client = reqwest::Client::new();
     let fetch = |url| async {
-        let send_ctx = format!("sending request to {}", url);
-        let status_ctx = format!("http error on {}", url);
-        let recv_ctx = format!("receiving content on {}", url);
-        let response = client.get(url).send().await.context(send_ctx)?;
-        ensure!(response.status().is_success(), status_ctx);
-        response.bytes().await.context(recv_ctx)
+        let urlcopy = format!("{}", url);
+        trace!("starting fetch of {}", urlcopy);
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .context(format!("sending request to {}", urlcopy))?;
+        ensure!(
+            response.status().is_success(),
+            format!("http error on {}", urlcopy)
+        );
+        trace!("receiving content on {}", urlcopy);
+        let data = response
+            .bytes()
+            .await
+            .context(format!("receiving content on {}", urlcopy))?;
+        trace!("done retrieving {}", urlcopy);
+        Ok(data)
     };
     let utf8 = std::str::from_utf8;
     let (versions, cdns) = futures::join!(
@@ -107,9 +124,11 @@ async fn main() -> Result<()> {
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
     let do_cdn_fetch = |path: String, cache_file: String| async move {
+        trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
         let cached = std::fs::read(&cache_file);
         if cached.is_ok() {
+            trace!("loading {} from local cache", path);
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
         for cdn_prefix in cdn_prefixes {
@@ -117,6 +136,7 @@ async fn main() -> Result<()> {
             if data.is_ok() {
                 let data = data.unwrap();
                 std::fs::write(&cache_file, &data)?;
+                trace!("wrote {} to local cache", path);
                 return Ok(data);
             }
         }

@@ -9,11 +9,13 @@ edition = "2018"
 anyhow = "1.0.44"
 bytes = "*"
 futures = "*"
+log = "*"
 md5 = "0.7.0"
 miniz_oxide = "0.4.4"
 nom = "*"
 nom-derive = "*"
 reqwest = "*"
+stderrlog = "*"
 structopt = "0.3.13"
 tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
 
