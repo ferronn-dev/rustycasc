@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
         .verbosity(100)
         .init()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
-    let client = reqwest::Client::new();
+    let ref client = reqwest::Client::new();
     let fetch = |url| async {
         let urlcopy = format!("{}", url);
         trace!("starting fetch of {}", urlcopy);
@@ -195,20 +195,27 @@ async fn main() -> Result<()> {
             .await
             .context("send fail")?;
         ensure!(response.status().is_success(), "status fail");
-        Ok(blte::parse(&response.bytes().await.context("recv fail")?)?)
+        blte::parse(&response.bytes().await.context("recv fail")?)
     };
-    for (fdid, path) in wdc3::strings(&fetch_fdid(1267335).await?)? {
-        match root.f2c(fdid as i32) {
-            Ok(c) => {
-                let e = encoding.c2e(c)?;
-                let (a, s, o) = archive_index.map.get(&e).context("missing index key")?;
-                println!("{} {} {} {}", e, a, s, o);
-            }
-            Err(_) => {
-                println!("nothing for {} {}", fdid, path)
-            }
-        }
-    }
+    println!(
+        "{:#?}",
+        futures::future::join_all(
+            wdc3::strings(&fetch_fdid(1267335).await?)?
+                .into_keys()
+                .map(|fdid| fdid as i32)
+                .filter(|fdid| root.f2c(*fdid).is_ok())
+                .map(fetch_fdid),
+        )
+        .await
+        .into_iter()
+        .collect::<Result<Vec<Vec<u8>>>>()?
+        .into_iter()
+        .map(|x| String::from_utf8(x).context("utf8 conversion"))
+        .collect::<Result<Vec<String>>>()?
+        .into_iter()
+        .map(|x| x.lines().map(|y| y.to_string()).collect::<Vec<String>>())
+        .collect::<Vec<Vec<String>>>()
+    );
     Ok(())
 }
 
