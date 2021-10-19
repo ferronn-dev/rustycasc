@@ -180,10 +180,11 @@ async fn main() -> Result<()> {
     };
     let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
     let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
-    {
+    let (archive_index, encoding, root) = (&archive_index, &encoding, &root);
+    let fetch_fdid = |fdid| async move {
         let (archive, size, offset) = archive_index
             .map
-            .get(&encoding.c2e(root.f2c(1267335)?)?)
+            .get(&encoding.c2e(root.f2c(fdid)?)?)
             .context("missing index key")?;
         let h = format!("{:032x}", archive);
         let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
@@ -194,18 +195,17 @@ async fn main() -> Result<()> {
             .await
             .context("send fail")?;
         ensure!(response.status().is_success(), "status fail");
-        for (fdid, path) in
-            wdc3::strings(&blte::parse(&response.bytes().await.context("recv fail")?)?)?
-        {
-            match root.f2c(fdid as i32) {
-                Ok(c) => {
-                    let e = encoding.c2e(c)?;
-                    let (a, s, o) = archive_index.map.get(&e).context("missing index key")?;
-                    println!("{} {} {} {}", e, a, s, o);
-                }
-                Err(_) => {
-                    println!("nothing for {} {}", fdid, path)
-                }
+        Ok(blte::parse(&response.bytes().await.context("recv fail")?)?)
+    };
+    for (fdid, path) in wdc3::strings(&fetch_fdid(1267335).await?)? {
+        match root.f2c(fdid as i32) {
+            Ok(c) => {
+                let e = encoding.c2e(c)?;
+                let (a, s, o) = archive_index.map.get(&e).context("missing index key")?;
+                println!("{} {} {} {}", e, a, s, o);
+            }
+            Err(_) => {
+                println!("nothing for {} {}", fdid, path)
             }
         }
     }
