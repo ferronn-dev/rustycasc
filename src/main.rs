@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
     let do_cdn_fetch = |path: String, cache_file: String| async move {
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
-        let cached = std::fs::read(&cache_file);
+        let cached = async_fs::read(&cache_file).await;
         if cached.is_ok() {
             trace!("loading {} from local cache", path);
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
             let data = fetch(format!("{}/{}", cdn_prefix, path)).await;
             if data.is_ok() {
                 let data = data.unwrap();
-                std::fs::write(&cache_file, &data)?;
+                async_fs::write(&cache_file, &data).await?;
                 trace!("wrote {} to local cache", path);
                 return Ok(data);
             }
