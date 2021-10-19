@@ -187,6 +187,7 @@ async fn main() -> Result<()> {
             .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
         let h = format!("{:032x}", archive);
+        trace!("fetching content key {:032x} from archive {}", ckey, h);
         let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
         let response = client
             .get(url)

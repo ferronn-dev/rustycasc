@@ -20,7 +20,11 @@ impl Root {
         Ok(self.data[*self.fmap.get(&fdid).context("missing fdid in root")?].content_key)
     }
     pub fn n2c(&self, name: &str) -> Result<u128> {
-        let hash = hashers::jenkins::lookup3(name.to_uppercase().as_bytes());
+        let hash: u64 = hashers::jenkins::lookup3(name.to_uppercase().as_bytes());
+        // The hi and lo words are swapped for some reason.
+        let hi = (hash >> 32) as u32;
+        let lo = (hash & 0xffffffff) as u32;
+        let hash: u64 = ((lo as u64) << 32) | (hi as u64);
         Ok(self.data[*self.nmap.get(&hash).context("missing name hash in root")?].content_key)
     }
 }
