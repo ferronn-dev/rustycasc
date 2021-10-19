@@ -202,7 +202,6 @@ async fn main() -> Result<()> {
         futures::future::join_all(
             wdc3::strings(&fetch_fdid(1267335).await?)?
                 .into_keys()
-                .map(|fdid| fdid as i32)
                 .filter(|fdid| root.f2c(*fdid).is_ok())
                 .map(fetch_fdid),
         )

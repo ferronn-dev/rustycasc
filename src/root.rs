@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Result};
 use bytes::Buf;
 
 struct RootData {
-    fdid: i32,
+    fdid: u32,
     content_key: u128,
     _name_hash: u64,
 }
@@ -12,7 +12,7 @@ struct RootData {
 pub struct Root(Vec<RootData>);
 
 impl Root {
-    pub fn f2c(&self, fdid: i32) -> Result<u128> {
+    pub fn f2c(&self, fdid: u32) -> Result<u128> {
         for d in &self.0 {
             if d.fdid == fdid {
                 return Ok(d.content_key);
@@ -48,11 +48,11 @@ pub fn parse(data: &[u8]) -> Result<Root> {
             p.remaining() >= 4 * num_records,
             "truncated filedataid delta block"
         );
-        let mut fdids = Vec::<i32>::new();
+        let mut fdids = Vec::<u32>::new();
         let mut fdid = -1;
         for _ in 0..num_records {
             fdid = fdid + p.get_i32_le() + 1;
-            fdids.push(fdid)
+            fdids.push(fdid.try_into()?)
         }
         let mut content_keys = Vec::<u128>::new();
         let mut name_hashes = Vec::<u64>::new();
