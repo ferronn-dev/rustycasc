@@ -181,10 +181,10 @@ async fn main() -> Result<()> {
     let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
     let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
     let (archive_index, encoding, root) = (&archive_index, &encoding, &root);
-    let fetch_fdid = |fdid| async move {
+    let fetch_content = |ckey| async move {
         let (archive, size, offset) = archive_index
             .map
-            .get(&encoding.c2e(root.f2c(fdid)?)?)
+            .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
         let h = format!("{:032x}", archive);
         let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
@@ -197,6 +197,8 @@ async fn main() -> Result<()> {
         ensure!(response.status().is_success(), "status fail");
         blte::parse(&response.bytes().await.context("recv fail")?)
     };
+    let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
+    let fetch_name = |name| async move { fetch_content(root.n2c(name)?).await };
     println!(
         "{:#?}",
         futures::future::join_all(
@@ -215,6 +217,12 @@ async fn main() -> Result<()> {
                 .collect::<Vec<String>>())
         })
         .collect::<Result<Vec<Vec<String>>>>()?
+    );
+    println!(
+        "{}",
+        fetch_name("Interface\\FrameXML\\FrameXML_Vanilla.toc")
+            .await?
+            .len()
     );
     Ok(())
 }

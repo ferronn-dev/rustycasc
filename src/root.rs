@@ -1,24 +1,27 @@
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto};
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{ensure, Context, Result};
 use bytes::Buf;
 
 struct RootData {
     fdid: u32,
     content_key: u128,
-    _name_hash: u64,
+    name_hash: u64,
 }
 
-pub struct Root(Vec<RootData>);
+pub struct Root {
+    data: Vec<RootData>,
+    fmap: HashMap<u32, usize>,
+    nmap: HashMap<u64, usize>,
+}
 
 impl Root {
     pub fn f2c(&self, fdid: u32) -> Result<u128> {
-        for d in &self.0 {
-            if d.fdid == fdid {
-                return Ok(d.content_key);
-            }
-        }
-        bail!("no content key for fdid {}", fdid)
+        Ok(self.data[*self.fmap.get(&fdid).context("missing fdid in root")?].content_key)
+    }
+    pub fn n2c(&self, name: &str) -> Result<u128> {
+        let hash = hashers::jenkins::lookup3(name.to_uppercase().as_bytes());
+        Ok(self.data[*self.nmap.get(&hash).context("missing name hash in root")?].content_key)
     }
 }
 
@@ -77,9 +80,21 @@ pub fn parse(data: &[u8]) -> Result<Root> {
             result.push(RootData {
                 fdid: fdids[i],
                 content_key: content_keys[i],
-                _name_hash: name_hashes[i],
+                name_hash: name_hashes[i],
             })
         }
     }
-    Ok(Root(result))
+    Ok(Root {
+        fmap: result
+            .iter()
+            .enumerate()
+            .map(|(k, d)| (d.fdid, k))
+            .collect(),
+        nmap: result
+            .iter()
+            .enumerate()
+            .map(|(k, d)| (d.name_hash, k))
+            .collect(),
+        data: result,
+    })
 }
