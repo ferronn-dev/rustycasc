@@ -69,24 +69,23 @@ async fn main() -> Result<()> {
         .init()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let ref client = reqwest::Client::new();
-    let fetch = |url| async {
-        let urlcopy = format!("{}", url);
-        trace!("starting fetch of {}", urlcopy);
+    let fetch = |url| async move {
+        trace!("starting fetch of {}", url);
         let response = client
-            .get(url)
+            .get(&url)
             .send()
             .await
-            .context(format!("sending request to {}", urlcopy))?;
+            .context(format!("sending request to {}", url))?;
         ensure!(
             response.status().is_success(),
-            format!("http error on {}", urlcopy)
+            format!("http error on {}", url)
         );
-        trace!("receiving content on {}", urlcopy);
+        trace!("receiving content on {}", url);
         let data = response
             .bytes()
             .await
-            .context(format!("receiving content on {}", urlcopy))?;
-        trace!("done retrieving {}", urlcopy);
+            .context(format!("receiving content on {}", url))?;
+        trace!("done retrieving {}", url);
         Ok(data)
     };
     let utf8 = std::str::from_utf8;
