@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
-                        range: Option<(usize, usize)>| async move {
+                        range: Option<(String, usize, usize)>| async move {
         let h = format!("{:032x}", hash);
         let path = format!(
             "{}/{}/{}/{}{}",
@@ -136,24 +136,30 @@ async fn main() -> Result<()> {
             h,
             suffix.unwrap_or("")
         );
-        let cache_file = format!("{}{}.{}", tag, suffix.unwrap_or(""), h);
+        let cache_file = format!(
+            "{}{}{}.{}",
+            tag,
+            suffix.unwrap_or(""),
+            range.clone().map_or("".to_string(), |(s, _, _)| s),
+            h
+        );
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
         let cached = async_fs::read(&cache_file).await;
         if cached.is_ok() {
-            trace!("loading {} from local cache", path);
+            trace!("loading local {}", cache_file);
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
         for cdn_prefix in cdn_prefixes {
             let mut req = client.get(format!("{}/{}", cdn_prefix, path));
-            if let Some((start, end)) = range {
+            if let Some((_, start, end)) = range {
                 req = req.header("Range", format!("bytes={}-{}", start, end));
             }
             let data = fetch(req.build()?).await;
             if data.is_ok() {
                 let data = data.unwrap();
                 async_fs::write(&cache_file, &data).await?;
-                trace!("wrote {} to local cache", path);
+                trace!("wrote local {}", cache_file);
                 return Ok(data);
             }
         }
@@ -199,8 +205,13 @@ async fn main() -> Result<()> {
             .map
             .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
-        let response =
-            do_cdn_fetch("data", *archive, None, Some((*offset, *offset + *size - 1))).await?;
+        let response = do_cdn_fetch(
+            "data",
+            *archive,
+            None,
+            Some((format!(".{:032x}", ckey), *offset, *offset + *size - 1)),
+        )
+        .await?;
         let bytes = blte::parse(&response)?;
         ensure!(
             util::md5hash(&bytes) == ckey,
