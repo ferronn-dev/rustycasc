@@ -58,6 +58,8 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
 
 #[derive(StructOpt)]
 struct Cli {
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: usize,
     product: String,
 }
 
@@ -66,7 +68,7 @@ async fn main() -> Result<()> {
     let cli = Cli::from_args_safe()?;
     stderrlog::new()
         .module(module_path!())
-        .verbosity(100)
+        .verbosity(cli.verbose)
         .init()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let ref client = reqwest::Client::new();
