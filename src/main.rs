@@ -8,6 +8,7 @@ mod wdc3;
 use anyhow::{bail, ensure, Context, Result};
 use bytes::Bytes;
 use log::trace;
+use reqwest::Request;
 use std::collections::HashMap;
 use structopt::StructOpt;
 
@@ -69,11 +70,11 @@ async fn main() -> Result<()> {
         .init()?;
     let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
     let ref client = reqwest::Client::new();
-    let fetch = |url| async move {
+    let fetch = |req: Request| async move {
+        let url = req.url().to_string();
         trace!("starting fetch of {}", url);
         let response = client
-            .get(&url)
-            .send()
+            .execute(req)
             .await
             .context(format!("sending request to {}", url))?;
         ensure!(
@@ -90,8 +91,8 @@ async fn main() -> Result<()> {
     };
     let utf8 = std::str::from_utf8;
     let (versions, cdns) = futures::join!(
-        fetch(format!("{}/versions", patch_base)),
-        fetch(format!("{}/cdns", patch_base))
+        fetch(client.get(format!("{}/versions", patch_base)).build()?),
+        fetch(client.get(format!("{}/cdns", patch_base)).build()?)
     );
     let (versions, cdns) = (versions?, cdns?);
     let (build_config, cdn_config) = (|| {
@@ -131,7 +132,7 @@ async fn main() -> Result<()> {
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
         for cdn_prefix in cdn_prefixes {
-            let data = fetch(format!("{}/{}", cdn_prefix, path)).await;
+            let data = fetch(client.get(format!("{}/{}", cdn_prefix, path)).build()?).await;
             if data.is_ok() {
                 let data = data.unwrap();
                 async_fs::write(&cache_file, &data).await?;
@@ -188,14 +189,14 @@ async fn main() -> Result<()> {
         let h = format!("{:032x}", archive);
         trace!("fetching content key {:032x} from archive {}", ckey, h);
         let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
-        let response = client
-            .get(url)
-            .header("Range", format!("bytes={}-{}", offset, offset + size - 1))
-            .send()
-            .await
-            .context("send fail")?;
-        ensure!(response.status().is_success(), "status fail");
-        let bytes = blte::parse(&response.bytes().await.context("recv fail")?)?;
+        let response = fetch(
+            client
+                .get(url)
+                .header("Range", format!("bytes={}-{}", offset, offset + size - 1))
+                .build()?,
+        )
+        .await?;
+        let bytes = blte::parse(&response)?;
         ensure!(util::md5hash(&bytes) == ckey, "checksum fail");
         Ok(bytes)
     };
