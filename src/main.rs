@@ -56,6 +56,13 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
+#[derive(derive_builder::Builder)]
+struct CdnReq {
+    tag: &'static str,
+    hash: u128,
+    suffix: &'static str,
+}
+
 #[derive(StructOpt)]
 struct Cli {
     product: String,
@@ -123,7 +130,10 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
-    let do_cdn_fetch = |path: String, cache_file: String| async move {
+    let do_cdn_fetch = |r: CdnReq| async move {
+        let h = format!("{:032x}", r.hash);
+        let path = format!("{}/{}/{}/{}{}", r.tag, &h[0..2], &h[2..4], h, r.suffix);
+        let cache_file = format!("{}{}.{}", r.tag, r.suffix, h);
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
         let cached = async_fs::read(&cache_file).await;
@@ -143,10 +153,14 @@ async fn main() -> Result<()> {
         bail!("fetch failed on all hosts: {}", path)
     };
     let cdn_fetch = |tag: &'static str, hash: u128, suffix: &'static str| async move {
-        let h = format!("{:032x}", hash);
-        let path = format!("{}/{}/{}/{}{}", tag, &h[0..2], &h[2..4], h, suffix);
-        let cache_file = format!("{}{}.{}", tag, suffix, h);
-        do_cdn_fetch(path, cache_file).await
+        do_cdn_fetch(
+            CdnReqBuilder::default()
+                .tag(tag)
+                .hash(hash)
+                .suffix(suffix)
+                .build()?,
+        )
+        .await
     };
     let archive_index = async {
         let index_shards = futures::future::join_all(
