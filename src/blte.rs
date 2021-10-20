@@ -6,9 +6,9 @@ use std::convert::TryInto;
 fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
     let inflate = miniz_oxide::inflate::decompress_to_vec_zlib;
     let chunk_data = &data[1..];
-    Ok(match data[0] as char {
-        'N' => Bytes::from(chunk_data.to_vec()),
-        'Z' => Bytes::from(
+    Ok(match data[0] {
+        b'N' => Bytes::from(chunk_data.to_vec()),
+        b'Z' => Bytes::from(
             inflate(&chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?,
         ),
         _ => bail!("invalid encoding"),
