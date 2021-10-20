@@ -56,13 +56,6 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
-#[derive(derive_builder::Builder)]
-struct CdnReq {
-    tag: &'static str,
-    hash: u128,
-    suffix: &'static str,
-}
-
 #[derive(StructOpt)]
 struct Cli {
     product: String,
@@ -130,10 +123,20 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
-    let do_cdn_fetch = |r: CdnReq| async move {
-        let h = format!("{:032x}", r.hash);
-        let path = format!("{}/{}/{}/{}{}", r.tag, &h[0..2], &h[2..4], h, r.suffix);
-        let cache_file = format!("{}{}.{}", r.tag, r.suffix, h);
+    let do_cdn_fetch = |tag: &'static str,
+                        hash: u128,
+                        suffix: Option<&'static str>,
+                        range: Option<(usize, usize)>| async move {
+        let h = format!("{:032x}", hash);
+        let path = format!(
+            "{}/{}/{}/{}{}",
+            tag,
+            &h[0..2],
+            &h[2..4],
+            h,
+            suffix.unwrap_or("")
+        );
+        let cache_file = format!("{}{}.{}", tag, suffix.unwrap_or(""), h);
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
         let cached = async_fs::read(&cache_file).await;
@@ -142,7 +145,11 @@ async fn main() -> Result<()> {
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
         }
         for cdn_prefix in cdn_prefixes {
-            let data = fetch(client.get(format!("{}/{}", cdn_prefix, path)).build()?).await;
+            let mut req = client.get(format!("{}/{}", cdn_prefix, path));
+            if let Some((start, end)) = range {
+                req = req.header("Range", format!("bytes={}-{}", start, end));
+            }
+            let data = fetch(req.build()?).await;
             if data.is_ok() {
                 let data = data.unwrap();
                 async_fs::write(&cache_file, &data).await?;
@@ -152,25 +159,17 @@ async fn main() -> Result<()> {
         }
         bail!("fetch failed on all hosts: {}", path)
     };
-    let cdn_fetch = |tag: &'static str, hash: u128, suffix: &'static str| async move {
-        do_cdn_fetch(
-            CdnReqBuilder::default()
-                .tag(tag)
-                .hash(hash)
-                .suffix(suffix)
-                .build()?,
-        )
-        .await
-    };
+    let cdn_fetch =
+        |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
     let archive_index = async {
         let index_shards = futures::future::join_all(
-            parse_config(&utf8(&(cdn_fetch("config", cdn_config, "").await?))?)
+            parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
                 .get("archives")
                 .context("missing archives in cdninfo")?
                 .split(" ")
                 .map(|s| async move {
                     let h = parse_hash(s)?;
-                    archive::parse_index(h, &(cdn_fetch("data", h, ".index").await?))
+                    archive::parse_index(h, &(do_cdn_fetch("data", h, Some(".index"), None).await?))
                 }),
         )
         .await;
@@ -182,13 +181,13 @@ async fn main() -> Result<()> {
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
-            &(cdn_fetch("config", build_config, "").await?),
+            &(cdn_fetch("config", build_config).await?),
         )?))?;
         let encoding = encoding::parse(&blte::parse(
-            &(cdn_fetch("data", buildinfo.encoding, "").await?),
+            &(cdn_fetch("data", buildinfo.encoding).await?),
         )?)?;
         let root = root::parse(&blte::parse(
-            &cdn_fetch("data", encoding.c2e(buildinfo.root)?, "").await?,
+            &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
         )?)?;
         Result::<(encoding::Encoding, root::Root)>::Ok((encoding, root))
     };
@@ -200,18 +199,14 @@ async fn main() -> Result<()> {
             .map
             .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
-        let h = format!("{:032x}", archive);
-        trace!("fetching content key {:032x} from archive {}", ckey, h);
-        let url = format!("{}/data/{}/{}/{}", cdn_prefixes[0], &h[0..2], &h[2..4], h);
-        let response = fetch(
-            client
-                .get(url)
-                .header("Range", format!("bytes={}-{}", offset, offset + size - 1))
-                .build()?,
-        )
-        .await?;
+        let response =
+            do_cdn_fetch("data", *archive, None, Some((*offset, *offset + *size - 1))).await?;
         let bytes = blte::parse(&response)?;
-        ensure!(util::md5hash(&bytes) == ckey, "checksum fail");
+        ensure!(
+            util::md5hash(&bytes) == ckey,
+            "checksum fail on {:032x}",
+            ckey
+        );
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
