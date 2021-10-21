@@ -235,6 +235,8 @@ async fn process(product: &str) -> Result<()> {
 struct Cli {
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbose: usize,
+    #[structopt(short = "p", long = "product")]
+    products: Vec<String>,
 }
 
 #[tokio::main]
@@ -244,14 +246,19 @@ async fn main() -> Result<()> {
         .module(module_path!())
         .verbosity(cli.verbose)
         .init()?;
-    let products = [
-        "wow",
-        "wowt",
-        "wow_classic",
-        "wow_classic_era",
-        "wow_classic_era_ptr",
-        "wow_classic_ptr",
-    ];
+    let products = if cli.products.is_empty() {
+        let d = [
+            "wow",
+            "wowt",
+            "wow_classic",
+            "wow_classic_era",
+            "wow_classic_era_ptr",
+            "wow_classic_ptr",
+        ];
+        d.iter().map(|s| s.to_string()).collect::<Vec<String>>()
+    } else {
+        cli.products
+    };
     futures::future::join_all(products.iter().map(|p| process(p)))
         .await
         .into_iter()
