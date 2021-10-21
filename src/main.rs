@@ -242,7 +242,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
             });
         for toc in tocs {
             use std::io::Write;
-            zip.start_file(&toc, zip::write::FileOptions::default())?;
+            zip.start_file(toc.replace("\\", "/"), zip::write::FileOptions::default())?;
             zip.write(&fetch_name(toc).await?)?;
         }
         zip.finish().context("zip archive failed to close")
