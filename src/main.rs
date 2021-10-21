@@ -219,32 +219,15 @@ async fn process(product: &str) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
-    let fetch_name = |name| async move { fetch_content(root.n2c(name)?).await };
-    println!(
-        "{:#?}",
-        futures::future::join_all(
-            wdc3::strings(&fetch_fdid(1267335).await?)?
-                .into_keys()
-                .filter(|fdid| root.f2c(*fdid).is_ok())
-                .map(fetch_fdid),
-        )
-        .await
-        .into_iter()
-        .map(|r| {
-            Ok(std::str::from_utf8(&r?)
-                .context("utf8 conversion")?
-                .lines()
-                .map(|y| y.to_string())
-                .collect::<Vec<String>>())
-        })
-        .collect::<Result<Vec<Vec<String>>>>()?
-    );
-    println!(
-        "{}",
-        fetch_name("Interface\\FrameXML\\FrameXML_Vanilla.toc")
-            .await?
-            .len()
-    );
+    let _fetch_name = |name| async move { fetch_content(root.n2c(name)?).await };
+    tokio::fs::write(
+        format!("{}.txt", product),
+        wdc3::strings(&fetch_fdid(1267335).await?)?
+            .into_values()
+            .collect::<Vec<String>>()
+            .join("\n"),
+    )
+    .await?;
     Ok(())
 }
 
