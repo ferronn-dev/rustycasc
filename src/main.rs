@@ -222,8 +222,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
     let mut zipbuf = Vec::<u8>::new();
     async {
-        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
-        let tocs = wdc3::strings(&fetch_fdid(1267335).await?)?
+        let tocnames: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
             .into_values()
             .chain(["Interface\\FrameXML\\".to_string()])
             .filter_map(|s| {
@@ -239,11 +238,17 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         }
                     }
                 }
-            });
-        for toc in tocs {
+            })
+            .collect();
+        let tocdatas = futures::future::join_all(tocnames.iter().map(|s| fetch_name(s.clone())))
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
+        for (name, data) in tocnames.iter().zip(tocdatas.iter()) {
             use std::io::Write;
-            zip.start_file(toc.replace("\\", "/"), zip::write::FileOptions::default())?;
-            zip.write(&fetch_name(toc).await?)?;
+            zip.start_file(name.replace("\\", "/"), zip::write::FileOptions::default())?;
+            zip.write(data)?;
         }
         zip.finish().context("zip archive failed to close")
     }
