@@ -56,7 +56,7 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
-async fn process(product: &str) -> Result<()> {
+async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
     let ref client = reqwest::Client::new();
     let fetch = |req: Request| async move {
@@ -224,6 +224,21 @@ async fn process(product: &str) -> Result<()> {
         format!("{}.txt", product),
         wdc3::strings(&fetch_fdid(1267335).await?)?
             .into_values()
+            .filter_map(|s| {
+                let dirname = s[..s.len() - 1].split("\\").last()?;
+                let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
+                match root.n2c(&toc1) {
+                    Ok(_) => Some(toc1),
+                    _ => {
+                        let toc2 = format!("{}{}.toc", s, dirname);
+                        match root.n2c(&toc2) {
+                            Ok(_) => Some(toc2),
+                            _ => None,
+                        }
+                    }
+                }
+            })
+            .chain(["\n".to_string()])
             .collect::<Vec<String>>()
             .join("\n"),
     )
@@ -246,20 +261,26 @@ async fn main() -> Result<()> {
         .module(module_path!())
         .verbosity(cli.verbose)
         .init()?;
-    let products = if cli.products.is_empty() {
-        let d = [
-            "wow",
-            "wowt",
-            "wow_classic",
-            "wow_classic_era",
-            "wow_classic_era_ptr",
-            "wow_classic_ptr",
-        ];
-        d.iter().map(|s| s.to_string()).collect::<Vec<String>>()
+    let all_products = velcro::hash_map! {
+        "wow": "Mainline",
+        "wowt": "Mainline",
+        "wow_classic": "TBC",
+        "wow_classic_era": "Vanilla",
+        "wow_classic_era_ptr": "Vanilla",
+        "wow_classic_ptr": "TBC",
+    };
+    let products: HashMap<String, String> = if cli.products.is_empty() {
+        all_products
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     } else {
         cli.products
+            .iter()
+            .map(|s| (s.clone(), all_products[s.as_str()].to_string()))
+            .collect()
     };
-    futures::future::join_all(products.iter().map(|p| process(p)))
+    futures::future::join_all(products.iter().map(|(k, v)| process(k, v)))
         .await
         .into_iter()
         .collect::<Result<Vec<()>>>()?;

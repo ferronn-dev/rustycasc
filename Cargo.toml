@@ -19,6 +19,4 @@ reqwest = "*"
 stderrlog = "*"
 structopt = "0.3.13"
 tokio = { version = "*", features = ["fs", "macros", "rt-multi-thread"] }
-
-[dev-dependencies]
 velcro = "*"
