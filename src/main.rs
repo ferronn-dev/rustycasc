@@ -224,6 +224,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         format!("{}.txt", product),
         wdc3::strings(&fetch_fdid(1267335).await?)?
             .into_values()
+            .chain(["Interface\\FrameXML\\".to_string()])
             .filter_map(|s| {
                 let dirname = s[..s.len() - 1].split("\\").last()?;
                 let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
@@ -238,7 +239,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                     }
                 }
             })
-            .chain(["\n".to_string()])
+            .chain(["".to_string()])
             .collect::<Vec<String>>()
             .join("\n"),
     )
