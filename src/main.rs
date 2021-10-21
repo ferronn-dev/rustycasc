@@ -125,6 +125,7 @@ async fn main() -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
     })()?;
+    let ref fetchmap = tokio::sync::Mutex::new(HashMap::<String, tokio::sync::Mutex<()>>::new());
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
@@ -145,6 +146,14 @@ async fn main() -> Result<()> {
             range.clone().map_or("".to_string(), |(s, _, _)| s),
             h
         );
+        let _guard = async {
+            let mut fm = fetchmap.lock().await;
+            fm.entry(cache_file.clone())
+                .or_insert(tokio::sync::Mutex::new(()))
+                .lock()
+                .await;
+        }
+        .await;
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
         let cached = async_fs::read(&cache_file).await;
