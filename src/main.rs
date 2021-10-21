@@ -253,7 +253,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         zip.finish().context("zip archive failed to close")
     }
     .await?;
-    tokio::fs::write(format!("{}.zip", product), zipbuf).await?;
+    tokio::fs::write(format!("zips/{}.zip", product), zipbuf).await?;
     Ok(())
 }
 
