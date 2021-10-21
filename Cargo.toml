@@ -7,7 +7,6 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.44"
-async-fs = "*"
 bytes = "*"
 futures = "*"
 hashers = "*"
@@ -19,7 +18,7 @@ nom-derive = "*"
 reqwest = "*"
 stderrlog = "*"
 structopt = "0.3.13"
-tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "*", features = ["fs", "macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 velcro = "*"

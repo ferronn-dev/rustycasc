@@ -143,7 +143,7 @@ async fn process(product: &str) -> Result<()> {
         .await;
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
-        let cached = async_fs::read(&cache_file).await;
+        let cached = tokio::fs::read(&cache_file).await;
         if cached.is_ok() {
             trace!("loading local {}", cache_file);
             return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
@@ -156,7 +156,7 @@ async fn process(product: &str) -> Result<()> {
             let data = fetch(req.build()?).await;
             if data.is_ok() {
                 let data = data.unwrap();
-                async_fs::write(&cache_file, &data).await?;
+                tokio::fs::write(&cache_file, &data).await?;
                 trace!("wrote local {}", cache_file);
                 return Ok(data);
             }
