@@ -56,21 +56,8 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
-#[derive(StructOpt)]
-struct Cli {
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    verbose: usize,
-    product: String,
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::from_args_safe()?;
-    stderrlog::new()
-        .module(module_path!())
-        .verbosity(cli.verbose)
-        .init()?;
-    let patch_base = format!("http://us.patch.battle.net:1119/{}", cli.product);
+async fn process(product: &str) -> Result<()> {
+    let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
     let ref client = reqwest::Client::new();
     let fetch = |req: Request| async move {
         let url = req.url().to_string();
@@ -258,6 +245,34 @@ async fn main() -> Result<()> {
             .await?
             .len()
     );
+    Ok(())
+}
+
+#[derive(StructOpt)]
+struct Cli {
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: usize,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::from_args_safe()?;
+    stderrlog::new()
+        .module(module_path!())
+        .verbosity(cli.verbose)
+        .init()?;
+    let products = [
+        "wow",
+        "wowt",
+        "wow_classic",
+        "wow_classic_era",
+        "wow_classic_era_ptr",
+        "wow_classic_ptr",
+    ];
+    futures::future::join_all(products.iter().map(|p| process(p)))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<()>>>()?;
     Ok(())
 }
 
