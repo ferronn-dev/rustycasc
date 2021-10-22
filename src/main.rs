@@ -260,14 +260,9 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         futures::future::join_all(
                             utf8(&content)?
                                 .lines()
-                                .filter_map(|line| {
-                                    let line = line.trim();
-                                    if !line.is_empty() && !line.starts_with("#") {
-                                        Some(line)
-                                    } else {
-                                        None
-                                    }
-                                })
+                                .map(|line| line.trim())
+                                .filter(|line| !line.is_empty())
+                                .filter(|line| !line.starts_with("#"))
                                 .map(|line| async move {
                                     Ok((line.to_string(), fetch_name(line.to_string()).await?))
                                 }),
