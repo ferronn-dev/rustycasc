@@ -256,19 +256,26 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         }
                     })
                     .map(|toc| async {
-                        let mut out = HashMap::<String, Vec<u8>>::new();
                         let content = fetch_name(toc.clone()).await?;
-                        for line in utf8(&content)?.lines() {
-                            if !line.starts_with("#") {
-                                let line = line.trim();
-                                if !line.is_empty() {
-                                    out.entry(line.to_string())
-                                        .or_insert(fetch_name(line.to_string()).await?);
-                                }
-                            }
-                        }
-                        out.entry(toc).or_insert(content);
-                        Ok(out)
+                        futures::future::join_all(
+                            utf8(&content)?
+                                .lines()
+                                .filter_map(|line| {
+                                    let line = line.trim();
+                                    if !line.is_empty() && !line.starts_with("#") {
+                                        Some(line)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|line| async move {
+                                    Ok((line.to_string(), fetch_name(line.to_string()).await?))
+                                }),
+                        )
+                        .await
+                        .into_iter()
+                        .chain([Ok((toc, content))])
+                        .collect::<Result<HashMap<String, Vec<u8>>>>()
                     }),
             )
             .await
