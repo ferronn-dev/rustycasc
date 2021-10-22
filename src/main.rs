@@ -272,6 +272,31 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         }
                     })
                     .map(|toc| async {
+                        let process_file = |file: String| async move {
+                            use xml::reader::{EventReader, XmlEvent::StartElement};
+                            let content = fetch_name(file.clone()).await?;
+                            if file.ends_with(".xml") {
+                                for e in EventReader::new(std::io::Cursor::new(&content)) {
+                                    if let StartElement {
+                                        name, attributes, ..
+                                    } = e?
+                                    {
+                                        let name = name.local_name.to_lowercase();
+                                        if name == "script" || name == "include" {
+                                            if let Some(value) = attributes
+                                                .into_iter()
+                                                .filter(|a| a.name.local_name == "file")
+                                                .map(|a| a.value)
+                                                .next()
+                                            {
+                                                println!("{}", normalize_path(&file, &value));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Ok((file, content))
+                        };
                         let content = fetch_name(toc.clone()).await?;
                         futures::future::join_all(
                             utf8(&content)?
@@ -281,9 +306,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                                 .filter(|line| !line.starts_with("#"))
                                 .map(|line| normalize_path(&toc, line))
                                 .filter(|file| root.n2c(file).is_ok())
-                                .map(|file| async move {
-                                    Ok((file.clone(), fetch_name(file).await?))
-                                }),
+                                .map(process_file),
                         )
                         .await
                         .into_iter()
