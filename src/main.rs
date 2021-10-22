@@ -234,7 +234,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
     let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
-    let tocnames: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    wdc3::strings(&fetch_fdid(1267335).await?)?
         .into_values()
         .chain(["Interface\\FrameXML\\".to_string()])
         .filter_map(|s| {
@@ -251,19 +252,16 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                 }
             }
         })
-        .collect();
-    let tocdatas = futures::future::join_all(tocnames.iter().map(|s| fetch_name(s.clone())))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+        .for_each(|f| tx.send(f).unwrap());
+    rx.close();
+    let mut tocmap = HashMap::<String, Vec<u8>>::new();
+    while let Some(f) = rx.recv().await {
+        let content = fetch_name(f.clone()).await?;
+        tocmap.entry(f).or_insert(content);
+    }
     tokio::fs::write(
         format!("zips/{}.zip", product),
-        to_zip_archive_bytes(
-            tocnames
-                .into_iter()
-                .zip(tocdatas.into_iter())
-                .collect::<HashMap<_, _>>(),
-        )?,
+        to_zip_archive_bytes(tocmap)?,
     )
     .await?;
     Ok(())
