@@ -280,6 +280,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                                 .filter(|line| !line.is_empty())
                                 .filter(|line| !line.starts_with("#"))
                                 .map(|line| normalize_path(&toc, line))
+                                .filter(|file| root.n2c(file).is_ok())
                                 .map(|file| async move {
                                     Ok((file.clone(), fetch_name(file).await?))
                                 }),
