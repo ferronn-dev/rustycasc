@@ -98,7 +98,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         fetch(client.get(format!("{}/cdns", patch_base)).build()?)
     );
     let (versions, cdns) = (versions?, cdns?);
-    let (build_config, cdn_config) = (|| {
+    let (build_config, cdn_config) = {
         let info = utf8(&*versions)?;
         let version = parse_info(info)
             .into_iter()
@@ -114,9 +114,9 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                 .get("CDNConfig")
                 .context("missing us cdn config version")?,
         )?;
-        Result::<(u128, u128)>::Ok((build, cdn))
-    })()?;
-    let ref cdn_prefixes = (|| {
+        (build, cdn)
+    };
+    let ref cdn_prefixes: Vec<String> = {
         let info = utf8(&*cdns)?;
         let cdn = parse_info(info)
             .into_iter()
@@ -124,8 +124,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
             .context("missing us cdn")?;
         let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(" ");
         let path = cdn.get("Path").context("missing us cdn path")?;
-        Result::<Vec<String>>::Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
-    })()?;
+        hosts.map(|s| format!("http://{}/{}", s, path)).collect()
+    };
     let ref fetchmap = tokio::sync::Mutex::new(HashMap::<String, tokio::sync::Mutex<()>>::new());
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
