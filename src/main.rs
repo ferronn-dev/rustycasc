@@ -56,6 +56,22 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
+fn normalize_path(base: &str, file: &str) -> String {
+    let mut base: Vec<&str> = base.split("\\").collect();
+    if base.is_empty() {
+        return file.to_string();
+    }
+    base.pop();
+    for part in file.split("\\") {
+        if part == ".." {
+            base.pop();
+        } else {
+            base.push(part);
+        }
+    }
+    base.join("\\")
+}
+
 fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     let mut zipbuf = Vec::<u8>::new();
     {
@@ -263,8 +279,9 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                                 .map(|line| line.trim())
                                 .filter(|line| !line.is_empty())
                                 .filter(|line| !line.starts_with("#"))
-                                .map(|line| async move {
-                                    Ok((line.to_string(), fetch_name(line.to_string()).await?))
+                                .map(|line| normalize_path(&toc, line))
+                                .map(|file| async move {
+                                    Ok((file.clone(), fetch_name(file).await?))
                                 }),
                         )
                         .await
@@ -357,6 +374,18 @@ mod tests {
         ];
         for (name, input, output) in tests {
             assert_eq!(super::parse_config(input), output, "{}", name);
+        }
+    }
+
+    #[test]
+    fn test_normalize_path() {
+        let tests = [
+            ("empty string", "", "", ""),
+            ("no dir", "a", "b", "b"),
+            ("same dir", "dir\\a", "b", "dir\\b"),
+        ];
+        for (name, in_base, in_file, output) in tests {
+            assert_eq!(super::normalize_path(in_base, in_file), output, "{}", name);
         }
     }
 }
