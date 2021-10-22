@@ -56,6 +56,20 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     })
 }
 
+fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
+    let mut zipbuf = Vec::<u8>::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
+        for (name, data) in m {
+            use std::io::Write;
+            zip.start_file(name.replace("\\", "/"), zip::write::FileOptions::default())?;
+            zip.write(&data)?;
+        }
+        zip.finish().context("zip archive failed to close")?;
+    }
+    Ok(zipbuf)
+}
+
 async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
     let ref client = reqwest::Client::new();
@@ -220,40 +234,38 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
     let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
-    let mut zipbuf = Vec::<u8>::new();
-    async {
-        let tocnames: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
-            .into_values()
-            .chain(["Interface\\FrameXML\\".to_string()])
-            .filter_map(|s| {
-                let dirname = s[..s.len() - 1].split("\\").last()?;
-                let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
-                match root.n2c(&toc1) {
-                    Ok(_) => Some(toc1),
-                    _ => {
-                        let toc2 = format!("{}{}.toc", s, dirname);
-                        match root.n2c(&toc2) {
-                            Ok(_) => Some(toc2),
-                            _ => None,
-                        }
+    let tocnames: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
+        .into_values()
+        .chain(["Interface\\FrameXML\\".to_string()])
+        .filter_map(|s| {
+            let dirname = s[..s.len() - 1].split("\\").last()?;
+            let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
+            match root.n2c(&toc1) {
+                Ok(_) => Some(toc1),
+                _ => {
+                    let toc2 = format!("{}{}.toc", s, dirname);
+                    match root.n2c(&toc2) {
+                        Ok(_) => Some(toc2),
+                        _ => None,
                     }
                 }
-            })
-            .collect();
-        let tocdatas = futures::future::join_all(tocnames.iter().map(|s| fetch_name(s.clone())))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
-        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
-        for (name, data) in tocnames.iter().zip(tocdatas.iter()) {
-            use std::io::Write;
-            zip.start_file(name.replace("\\", "/"), zip::write::FileOptions::default())?;
-            zip.write(data)?;
-        }
-        zip.finish().context("zip archive failed to close")
-    }
+            }
+        })
+        .collect();
+    let tocdatas = futures::future::join_all(tocnames.iter().map(|s| fetch_name(s.clone())))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
+    tokio::fs::write(
+        format!("zips/{}.zip", product),
+        to_zip_archive_bytes(
+            tocnames
+                .into_iter()
+                .zip(tocdatas.into_iter())
+                .collect::<HashMap<_, _>>(),
+        )?,
+    )
     .await?;
-    tokio::fs::write(format!("zips/{}.zip", product), zipbuf).await?;
     Ok(())
 }
 
