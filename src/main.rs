@@ -234,37 +234,50 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
     let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let tocmap = async {
-        let mut tocmap = HashMap::<String, Vec<u8>>::new();
-        while let Some(f) = rx.recv().await {
-            let content = fetch_name(f.clone()).await?;
-            tocmap.entry(f).or_insert(content);
-        }
-        Result::<HashMap<String, Vec<u8>>>::Ok(tocmap)
-    };
-    wdc3::strings(&fetch_fdid(1267335).await?)?
-        .into_values()
-        .chain(["Interface\\FrameXML\\".to_string()])
-        .filter_map(|s| {
-            let dirname = s[..s.len() - 1].split("\\").last()?;
-            let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
-            match root.n2c(&toc1) {
-                Ok(_) => Some(toc1),
-                _ => {
-                    let toc2 = format!("{}{}.toc", s, dirname);
-                    match root.n2c(&toc2) {
-                        Ok(_) => Some(toc2),
-                        _ => None,
-                    }
-                }
-            }
-        })
-        .for_each(|f| tx.send(f).unwrap());
-    drop(tx);
     tokio::fs::write(
         format!("zips/{}.zip", product),
-        to_zip_archive_bytes(tocmap.await?)?,
+        to_zip_archive_bytes(
+            futures::future::join_all(
+                wdc3::strings(&fetch_fdid(1267335).await?)?
+                    .into_values()
+                    .chain(["Interface\\FrameXML\\".to_string()])
+                    .filter_map(|s| {
+                        let dirname = s[..s.len() - 1].split("\\").last()?;
+                        let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
+                        match root.n2c(&toc1) {
+                            Ok(_) => Some(toc1),
+                            _ => {
+                                let toc2 = format!("{}{}.toc", s, dirname);
+                                match root.n2c(&toc2) {
+                                    Ok(_) => Some(toc2),
+                                    _ => None,
+                                }
+                            }
+                        }
+                    })
+                    .map(|toc| async {
+                        let mut out = HashMap::<String, Vec<u8>>::new();
+                        let content = fetch_name(toc.clone()).await?;
+                        for line in utf8(&content)?.lines() {
+                            if !line.starts_with("#") {
+                                let line = line.trim();
+                                if !line.is_empty() {
+                                    out.entry(line.to_string())
+                                        .or_insert(fetch_name(line.to_string()).await?);
+                                }
+                            }
+                        }
+                        out.entry(toc).or_insert(content);
+                        Ok(out)
+                    }),
+            )
+            .await
+            .into_iter()
+            .collect::<Result<Vec<HashMap<String, Vec<u8>>>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<String, Vec<u8>>>(),
+        )?,
     )
     .await?;
     Ok(())

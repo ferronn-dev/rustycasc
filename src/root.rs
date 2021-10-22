@@ -25,7 +25,11 @@ impl Root {
         let hi = (hash >> 32) as u32;
         let lo = (hash & 0xffffffff) as u32;
         let hash: u64 = ((lo as u64) << 32) | (hi as u64);
-        Ok(self.data[*self.nmap.get(&hash).context("missing name hash in root")?].content_key)
+        Ok(self.data[*self
+            .nmap
+            .get(&hash)
+            .with_context(|| format!("missing name hash in root: {}", name))?]
+        .content_key)
     }
 }
 
