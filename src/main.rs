@@ -88,7 +88,7 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     Ok(zipbuf)
 }
 
-macro_rules! joinall {
+macro_rules! join_results {
     ($it:expr) => {
         futures::future::join_all($it)
             .await
@@ -208,22 +208,24 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let cdn_fetch =
         |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
     let archive_index = async {
-        let index_shards = futures::future::join_all(
-            parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
-                .get("archives")
-                .context("missing archives in cdninfo")?
-                .split(" ")
-                .map(|s| async move {
-                    let h = parse_hash(s)?;
-                    archive::parse_index(h, &(do_cdn_fetch("data", h, Some(".index"), None).await?))
-                }),
-        )
-        .await;
-        let mut map = HashMap::<u128, (u128, usize, usize)>::new();
-        for r in index_shards.into_iter() {
-            map.extend(r?.map.drain());
-        }
-        return Result::<archive::Index>::Ok(archive::Index { map });
+        Result::<archive::Index>::Ok(archive::Index {
+            map: join_results!(
+                parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
+                    .get("archives")
+                    .context("missing archives in cdninfo")?
+                    .split(" ")
+                    .map(|s| async move {
+                        let h = parse_hash(s)?;
+                        archive::parse_index(
+                            h,
+                            &(do_cdn_fetch("data", h, Some(".index"), None).await?),
+                        )
+                    })
+            )
+            .map(|archive::Index { map }| map)
+            .flatten()
+            .collect(),
+        })
     };
     let encoding_and_root = async {
         let buildinfo = parse_build_config(&parse_config(&utf8(
@@ -265,7 +267,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     tokio::fs::write(
         format!("zips/{}.zip", product),
         to_zip_archive_bytes(
-            joinall!(wdc3::strings(&fetch_fdid(1267335).await?)?
+            join_results!(wdc3::strings(&fetch_fdid(1267335).await?)?
                 .into_values()
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
@@ -315,7 +317,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                     };
                     let content = fetch_name(toc.clone()).await?;
                     Result::<HashMap<String, Vec<u8>>>::Ok(
-                        joinall!(utf8(&content)?
+                        join_results!(utf8(&content)?
                             .lines()
                             .map(|line| line.trim())
                             .filter(|line| !line.is_empty())
@@ -370,7 +372,7 @@ async fn main() -> Result<()> {
             .map(|s| (s.clone(), all_products[s.as_str()].to_string()))
             .collect()
     };
-    joinall!(products.iter().map(|(k, v)| process(k, v))).for_each(drop);
+    join_results!(products.iter().map(|(k, v)| process(k, v))).for_each(drop);
     Ok(())
 }
 
