@@ -295,31 +295,36 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                                     }
                                 }
                             }
-                            Ok((file, content))
+                            Result::<HashMap<String, Vec<u8>>>::Ok(
+                                velcro::hash_map! {file: content},
+                            )
                         };
                         let content = fetch_name(toc.clone()).await?;
-                        futures::future::join_all(
-                            utf8(&content)?
-                                .lines()
-                                .map(|line| line.trim())
-                                .filter(|line| !line.is_empty())
-                                .filter(|line| !line.starts_with("#"))
-                                .map(|line| normalize_path(&toc, line))
-                                .filter(|file| root.n2c(file).is_ok())
-                                .map(process_file),
+                        Result::<HashMap<String, Vec<u8>>>::Ok(
+                            futures::future::join_all(
+                                utf8(&content)?
+                                    .lines()
+                                    .map(|line| line.trim())
+                                    .filter(|line| !line.is_empty())
+                                    .filter(|line| !line.starts_with("#"))
+                                    .map(|line| normalize_path(&toc, line))
+                                    .filter(|file| root.n2c(file).is_ok())
+                                    .map(process_file),
+                            )
+                            .await
+                            .into_iter()
+                            .flatten()
+                            .flatten()
+                            .chain([(toc, content)])
+                            .collect(),
                         )
-                        .await
-                        .into_iter()
-                        .chain([Ok((toc, content))])
-                        .collect::<Result<HashMap<String, Vec<u8>>>>()
                     }),
             )
             .await
             .into_iter()
-            .collect::<Result<Vec<HashMap<String, Vec<u8>>>>>()?
-            .into_iter()
             .flatten()
-            .collect::<HashMap<String, Vec<u8>>>(),
+            .flatten()
+            .collect(),
         )?,
     )
     .await?;
