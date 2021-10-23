@@ -273,16 +273,11 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                 .filter_map(|s| {
                     let dirname = s[..s.len() - 1].split("\\").last()?;
                     let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
-                    match root.n2c(&toc1) {
-                        Ok(_) => Some(toc1),
-                        _ => {
-                            let toc2 = format!("{}{}.toc", s, dirname);
-                            match root.n2c(&toc2) {
-                                Ok(_) => Some(toc2),
-                                _ => None,
-                            }
-                        }
-                    }
+                    let toc2 = format!("{}{}.toc", s, dirname);
+                    root.n2c(&toc1)
+                        .and(Ok(toc1))
+                        .or(root.n2c(&toc2).and(Ok(toc2)))
+                        .ok()
                 })
                 .map(|toc| async {
                     let process_file = |file: String| async move {
