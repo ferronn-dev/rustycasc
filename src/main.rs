@@ -57,9 +57,11 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
 }
 
 fn normalize_path(base: &str, file: &str) -> String {
+    let base = base.replace("/", "\\");
+    let file = file.replace("/", "\\");
     let mut base: Vec<&str> = base.split("\\").collect();
     if base.is_empty() {
-        return file.to_string();
+        return file;
     }
     base.pop();
     for part in file.split("\\") {
@@ -275,6 +277,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         let process_file = |file: String| async move {
                             use xml::reader::{EventReader, XmlEvent::StartElement};
                             let content = fetch_name(file.clone()).await?;
+                            let mut map = HashMap::<String, Vec<u8>>::new();
                             if file.ends_with(".xml") {
                                 for e in EventReader::new(std::io::Cursor::new(&content)) {
                                     if let StartElement {
@@ -289,15 +292,20 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                                                 .map(|a| a.value)
                                                 .next()
                                             {
-                                                println!("{}", normalize_path(&file, &value));
+                                                let path = normalize_path(&file, &value);
+                                                if root.n2c(&path).is_ok() {
+                                                    map.insert(
+                                                        path.clone(),
+                                                        fetch_name(path).await?,
+                                                    );
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                            Result::<HashMap<String, Vec<u8>>>::Ok(
-                                velcro::hash_map! {file: content},
-                            )
+                            map.insert(file, content);
+                            Ok(map)
                         };
                         let content = fetch_name(toc.clone()).await?;
                         Result::<HashMap<String, Vec<u8>>>::Ok(
@@ -313,7 +321,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                             )
                             .await
                             .into_iter()
-                            .flatten()
+                            .collect::<Result<Vec<_>>>()?
+                            .into_iter()
                             .flatten()
                             .chain([(toc, content)])
                             .collect(),
@@ -322,7 +331,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
             )
             .await
             .into_iter()
-            .flatten()
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
             .flatten()
             .collect(),
         )?,
