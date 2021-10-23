@@ -266,8 +266,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
     tokio::fs::write(
         format!("zips/{}.zip", product),
-        to_zip_archive_bytes(
-            join_results!(wdc3::strings(&fetch_fdid(1267335).await?)?
+        to_zip_archive_bytes({
+            let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
                 .into_values()
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
@@ -279,58 +279,51 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         .or(root.n2c(&toc2).and(Ok(toc2)))
                         .ok()
                 })
-                .map(|toc| async {
-                    let process_file = |file: String| async move {
-                        use xml::reader::{EventReader, XmlEvent::StartElement};
-                        let content = fetch_name(file.clone()).await?;
-                        let mut map = HashMap::<String, Vec<u8>>::new();
-                        if file.ends_with(".xml") {
-                            for e in EventReader::new(std::io::Cursor::new(&content)) {
-                                if let StartElement {
-                                    name, attributes, ..
-                                } = e?
+                .collect();
+            let mut result = HashMap::<String, Vec<u8>>::new();
+            while !stack.is_empty() {
+                let file = stack.pop().unwrap();
+                if !root.n2c(&file).is_ok() {
+                    println!("missing fdid for {}", file);
+                    continue;
+                }
+                let content = fetch_name(file.clone()).await?;
+                if file.ends_with(".toc") {
+                    utf8(&content)?
+                        .lines()
+                        .map(|line| line.trim())
+                        .filter(|line| !line.is_empty())
+                        .filter(|line| !line.starts_with("#"))
+                        .for_each(|line| stack.push(normalize_path(&file, line)));
+                } else if file.ends_with(".xml") {
+                    use xml::reader::{EventReader, XmlEvent::StartElement};
+                    for e in EventReader::new(std::io::Cursor::new(&content)) {
+                        if let StartElement {
+                            name, attributes, ..
+                        } = e.context(format!("{}", file))?
+                        {
+                            let name = name.local_name.to_lowercase();
+                            if name == "script" || name == "include" {
+                                if let Some(value) = attributes
+                                    .into_iter()
+                                    .filter(|a| a.name.local_name == "file")
+                                    .map(|a| a.value)
+                                    .next()
                                 {
-                                    let name = name.local_name.to_lowercase();
-                                    if name == "script" || name == "include" {
-                                        if let Some(value) = attributes
-                                            .into_iter()
-                                            .filter(|a| a.name.local_name == "file")
-                                            .map(|a| a.value)
-                                            .next()
-                                        {
-                                            let path = normalize_path(&file, &value);
-                                            if root.n2c(&path).is_ok() {
-                                                map.insert(path.clone(), fetch_name(path).await?);
-                                            }
-                                        }
-                                    }
+                                    let path = normalize_path(&file, &value);
+                                    stack.push(path);
                                 }
                             }
                         }
-                        map.insert(file, content);
-                        Ok(map)
-                    };
-                    let content = fetch_name(toc.clone()).await?;
-                    Result::<HashMap<String, Vec<u8>>>::Ok(
-                        join_results!(utf8(&content)?
-                            .lines()
-                            .map(|line| line.trim())
-                            .filter(|line| !line.is_empty())
-                            .filter(|line| !line.starts_with("#"))
-                            .map(|line| normalize_path(&toc, line))
-                            .filter(|file| root.n2c(file).is_ok())
-                            .map(process_file))
-                        .flatten()
-                        .chain([(toc, content)])
-                        .collect(),
-                    )
-                }))
-            .flatten()
-            .collect(),
-        )?,
+                    }
+                }
+                result.insert(file, content);
+            }
+            Result::<_>::Ok(result)
+        }?)?,
     )
-    .await?;
-    Ok(())
+    .await
+    .context("zip writing")
 }
 
 #[derive(StructOpt)]
