@@ -88,6 +88,16 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     Ok(zipbuf)
 }
 
+macro_rules! joinall {
+    ($it:expr) => {
+        futures::future::join_all($it)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+    };
+}
+
 async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
     let ref client = reqwest::Client::new();
@@ -255,84 +265,69 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     tokio::fs::write(
         format!("zips/{}.zip", product),
         to_zip_archive_bytes(
-            futures::future::join_all(
-                wdc3::strings(&fetch_fdid(1267335).await?)?
-                    .into_values()
-                    .chain(["Interface\\FrameXML\\".to_string()])
-                    .filter_map(|s| {
-                        let dirname = s[..s.len() - 1].split("\\").last()?;
-                        let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
-                        match root.n2c(&toc1) {
-                            Ok(_) => Some(toc1),
-                            _ => {
-                                let toc2 = format!("{}{}.toc", s, dirname);
-                                match root.n2c(&toc2) {
-                                    Ok(_) => Some(toc2),
-                                    _ => None,
-                                }
+            joinall!(wdc3::strings(&fetch_fdid(1267335).await?)?
+                .into_values()
+                .chain(["Interface\\FrameXML\\".to_string()])
+                .filter_map(|s| {
+                    let dirname = s[..s.len() - 1].split("\\").last()?;
+                    let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
+                    match root.n2c(&toc1) {
+                        Ok(_) => Some(toc1),
+                        _ => {
+                            let toc2 = format!("{}{}.toc", s, dirname);
+                            match root.n2c(&toc2) {
+                                Ok(_) => Some(toc2),
+                                _ => None,
                             }
                         }
-                    })
-                    .map(|toc| async {
-                        let process_file = |file: String| async move {
-                            use xml::reader::{EventReader, XmlEvent::StartElement};
-                            let content = fetch_name(file.clone()).await?;
-                            let mut map = HashMap::<String, Vec<u8>>::new();
-                            if file.ends_with(".xml") {
-                                for e in EventReader::new(std::io::Cursor::new(&content)) {
-                                    if let StartElement {
-                                        name, attributes, ..
-                                    } = e?
-                                    {
-                                        let name = name.local_name.to_lowercase();
-                                        if name == "script" || name == "include" {
-                                            if let Some(value) = attributes
-                                                .into_iter()
-                                                .filter(|a| a.name.local_name == "file")
-                                                .map(|a| a.value)
-                                                .next()
-                                            {
-                                                let path = normalize_path(&file, &value);
-                                                if root.n2c(&path).is_ok() {
-                                                    map.insert(
-                                                        path.clone(),
-                                                        fetch_name(path).await?,
-                                                    );
-                                                }
+                    }
+                })
+                .map(|toc| async {
+                    let process_file = |file: String| async move {
+                        use xml::reader::{EventReader, XmlEvent::StartElement};
+                        let content = fetch_name(file.clone()).await?;
+                        let mut map = HashMap::<String, Vec<u8>>::new();
+                        if file.ends_with(".xml") {
+                            for e in EventReader::new(std::io::Cursor::new(&content)) {
+                                if let StartElement {
+                                    name, attributes, ..
+                                } = e?
+                                {
+                                    let name = name.local_name.to_lowercase();
+                                    if name == "script" || name == "include" {
+                                        if let Some(value) = attributes
+                                            .into_iter()
+                                            .filter(|a| a.name.local_name == "file")
+                                            .map(|a| a.value)
+                                            .next()
+                                        {
+                                            let path = normalize_path(&file, &value);
+                                            if root.n2c(&path).is_ok() {
+                                                map.insert(path.clone(), fetch_name(path).await?);
                                             }
                                         }
                                     }
                                 }
                             }
-                            map.insert(file, content);
-                            Ok(map)
-                        };
-                        let content = fetch_name(toc.clone()).await?;
-                        Result::<HashMap<String, Vec<u8>>>::Ok(
-                            futures::future::join_all(
-                                utf8(&content)?
-                                    .lines()
-                                    .map(|line| line.trim())
-                                    .filter(|line| !line.is_empty())
-                                    .filter(|line| !line.starts_with("#"))
-                                    .map(|line| normalize_path(&toc, line))
-                                    .filter(|file| root.n2c(file).is_ok())
-                                    .map(process_file),
-                            )
-                            .await
-                            .into_iter()
-                            .collect::<Result<Vec<_>>>()?
-                            .into_iter()
-                            .flatten()
-                            .chain([(toc, content)])
-                            .collect(),
-                        )
-                    }),
-            )
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
+                        }
+                        map.insert(file, content);
+                        Ok(map)
+                    };
+                    let content = fetch_name(toc.clone()).await?;
+                    Result::<HashMap<String, Vec<u8>>>::Ok(
+                        joinall!(utf8(&content)?
+                            .lines()
+                            .map(|line| line.trim())
+                            .filter(|line| !line.is_empty())
+                            .filter(|line| !line.starts_with("#"))
+                            .map(|line| normalize_path(&toc, line))
+                            .filter(|file| root.n2c(file).is_ok())
+                            .map(process_file))
+                        .flatten()
+                        .chain([(toc, content)])
+                        .collect(),
+                    )
+                }))
             .flatten()
             .collect(),
         )?,
@@ -375,10 +370,7 @@ async fn main() -> Result<()> {
             .map(|s| (s.clone(), all_products[s.as_str()].to_string()))
             .collect()
     };
-    futures::future::join_all(products.iter().map(|(k, v)| process(k, v)))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<()>>>()?;
+    joinall!(products.iter().map(|(k, v)| process(k, v))).for_each(drop);
     Ok(())
 }
 
