@@ -263,6 +263,10 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
+    let fdids = wdc3::strings(&fetch_fdid(1375801).await?)?
+        .into_iter()
+        .map(|(k, v)| (v.join("").to_lowercase(), k))
+        .collect::<HashMap<String, u32>>();
     tokio::fs::write(
         format!("zips/{}.zip", product),
         to_zip_archive_bytes({
@@ -283,10 +287,13 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
             let mut result = HashMap::<String, Vec<u8>>::new();
             while !stack.is_empty() {
                 let file = stack.pop().unwrap();
-                let content = match root.n2c(&file) {
-                    Ok(ckey) => fetch_content(ckey).await?,
-                    _ => {
-                        println!("missing fdid for {}", file);
+                let content = match root.n2c(&file).ok().or(fdids
+                    .get(&file.to_lowercase())
+                    .and_then(|k| root.f2c(*k).ok()))
+                {
+                    Some(ckey) => fetch_content(ckey).await?,
+                    None => {
+                        eprintln!("skipping file with no content key: {}", file);
                         continue;
                     }
                 };
