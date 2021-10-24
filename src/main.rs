@@ -297,7 +297,8 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         .for_each(|line| stack.push(normalize_path(&file, line)));
                 } else if file.ends_with(".xml") {
                     use xml::reader::{EventReader, XmlEvent::StartElement};
-                    for e in EventReader::new(std::io::Cursor::new(&content)) {
+                    let xml = &content.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&content);
+                    for e in EventReader::new(std::io::Cursor::new(xml)) {
                         if let StartElement {
                             name, attributes, ..
                         } = e.context(format!("{}", file))?
