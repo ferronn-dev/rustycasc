@@ -131,10 +131,12 @@ struct File {
 pub fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
     let File {
         mut sections,
-        header,
+        header: Header {
+            flags, record_size, ..
+        },
         ..
     } = File::parse(data).map_err(|_| Error::msg("parse error"))?.1;
-    ensure!(header.flags == 4, "unsupported flags");
+    ensure!(flags == 4, "unsupported flags");
     ensure!(sections.len() == 1, "unsupported number of sections");
     let Section {
         records,
@@ -144,7 +146,7 @@ pub fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
     } = sections.remove(0);
     let num_records = records.len();
     ensure!(id_list.len() == num_records, "unexpected record count");
-    let rsize: usize = header.record_size.try_into()?;
+    let rsize: usize = record_size.try_into()?;
     ensure!(rsize % 4 == 0, "unexpected record size");
     let values = records
         .into_iter()
