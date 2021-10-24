@@ -1,6 +1,6 @@
 use std::{collections::HashMap, convert::TryInto};
 
-use anyhow::{ensure, Error, Result};
+use anyhow::{ensure, Context, Error, Result};
 use bytes::Buf;
 use nom_derive::{nom, NomLE, Parse};
 
@@ -128,36 +128,44 @@ struct File {
     sections: Vec<Section>,
 }
 
-pub fn strings(data: &[u8]) -> Result<HashMap<u32, String>> {
-    let file = File::parse(data).map_err(|_| Error::msg("parse error"))?.1;
-    ensure!(file.header.flags == 4, "unsupported flags");
-    ensure!(file.sections.len() == 1, "unsupported number of sections");
-    let ref section = file.sections[0];
-    ensure!(
-        section.id_list.len() == section.records.len(),
-        "unexpected record count"
-    );
-    let rsize: usize = file.header.record_size.try_into()?;
-    let mut m = HashMap::<u32, String>::new();
-    for (k, (id, rec)) in section
-        .id_list
-        .iter()
-        .zip(section.records.iter())
+pub fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
+    let File {
+        mut sections,
+        header,
+        ..
+    } = File::parse(data).map_err(|_| Error::msg("parse error"))?.1;
+    ensure!(header.flags == 4, "unsupported flags");
+    ensure!(sections.len() == 1, "unsupported number of sections");
+    let Section {
+        records,
+        id_list,
+        string_table,
+        ..
+    } = sections.remove(0);
+    let num_records = records.len();
+    ensure!(id_list.len() == num_records, "unexpected record count");
+    let rsize: usize = header.record_size.try_into()?;
+    ensure!(rsize % 4 == 0, "unexpected record size");
+    let values = records
+        .into_iter()
         .enumerate()
-    {
-        let value: usize = rec.data.as_slice().get_u32_le().try_into()?;
-        m.insert(
-            *id,
-            String::from_utf8(
-                section
-                    .string_table
-                    .iter()
-                    .skip(value - (section.records.len() - k) * rsize)
-                    .take_while(|&b| *b != 0)
-                    .cloned()
-                    .collect(),
-            )?,
-        );
-    }
-    Ok(m)
+        .map(|(k, rec)| {
+            (0..rsize)
+                .step_by(4)
+                .map(|offset| {
+                    let value: usize = (&rec.data.as_slice()[offset..]).get_u32_le().try_into()?;
+                    String::from_utf8(
+                        string_table
+                            .iter()
+                            .skip(value - (num_records - k) * rsize + offset)
+                            .take_while(|&b| *b != 0)
+                            .cloned()
+                            .collect(),
+                    )
+                    .context("wdc3 string field parsing")
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(id_list.into_iter().zip(values.into_iter()).collect())
 }
