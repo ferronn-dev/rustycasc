@@ -188,7 +188,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         let cached = tokio::fs::read(&cache_file).await;
         if cached.is_ok() {
             trace!("loading local {}", cache_file);
-            return Result::<Bytes>::Ok(Bytes::from(cached.unwrap()));
+            return Result::<_>::Ok(Bytes::from(cached.unwrap()));
         }
         for cdn_prefix in cdn_prefixes {
             let mut req = client.get(format!("{}/{}", cdn_prefix, path));
@@ -208,7 +208,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let cdn_fetch =
         |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
     let archive_index = async {
-        Result::<archive::Index>::Ok(archive::Index {
+        Result::<_>::Ok(archive::Index {
             map: join_results!(
                 parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
                     .get("archives")
@@ -237,7 +237,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         let root = root::parse(&blte::parse(
             &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
         )?)?;
-        Result::<(encoding::Encoding, root::Root)>::Ok((encoding, root))
+        Result::<_>::Ok((encoding, root))
     };
     let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
     let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
