@@ -263,7 +263,6 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
-    let fetch_name = |name: String| async move { fetch_content(root.n2c(name.as_str())?).await };
     tokio::fs::write(
         format!("zips/{}.zip", product),
         to_zip_archive_bytes({
@@ -283,11 +282,13 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
             let mut result = HashMap::<String, Vec<u8>>::new();
             while !stack.is_empty() {
                 let file = stack.pop().unwrap();
-                if !root.n2c(&file).is_ok() {
-                    println!("missing fdid for {}", file);
-                    continue;
-                }
-                let content = fetch_name(file.clone()).await?;
+                let content = match root.n2c(&file) {
+                    Ok(ckey) => fetch_content(ckey).await?,
+                    _ => {
+                        println!("missing fdid for {}", file);
+                        continue;
+                    }
+                };
                 if file.ends_with(".toc") {
                     utf8(&content)?
                         .lines()
