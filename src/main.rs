@@ -307,25 +307,26 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                 } else if file.ends_with(".xml") {
                     use xml::reader::{EventReader, XmlEvent::StartElement};
                     let xml = &content.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&content);
-                    for e in EventReader::new(std::io::Cursor::new(xml)) {
-                        if let StartElement {
-                            name, attributes, ..
-                        } = e.context(format!("{}", file))?
-                        {
-                            let name = name.local_name.to_lowercase();
-                            if name == "script" || name == "include" {
-                                if let Some(value) = attributes
-                                    .into_iter()
-                                    .filter(|a| a.name.local_name == "file")
-                                    .map(|a| a.value)
-                                    .next()
-                                {
-                                    let path = normalize_path(&file, &value);
-                                    stack.push(path);
-                                }
+                    EventReader::new(std::io::Cursor::new(xml))
+                        .into_iter()
+                        .map(|e| e.context("xml read error"))
+                        .collect::<Result<Vec<_>>>()?
+                        .into_iter()
+                        .filter_map(|e| {
+                            if let StartElement {
+                                name, attributes, ..
+                            } = e
+                            {
+                                Some((name.local_name.to_lowercase(), attributes))
+                            } else {
+                                None
                             }
-                        }
-                    }
+                        })
+                        .filter(|(name, _)| name == "script" || name == "include")
+                        .flat_map(|(_, attrs)| attrs)
+                        .filter(|attr| attr.name.local_name == "file")
+                        .map(|attr| attr.value)
+                        .for_each(|value| stack.push(normalize_path(&file, &value)));
                 }
                 result.insert(file, content);
             }
