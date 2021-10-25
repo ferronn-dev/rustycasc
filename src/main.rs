@@ -13,19 +13,19 @@ use std::collections::HashMap;
 use structopt::StructOpt;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
-    if s == "" {
+    if s.is_empty() {
         // Empty string special case because lines() returns an empty iterator.
         return vec![];
     }
-    let mut lines = s.lines().map(|x| x.split("|"));
+    let mut lines = s.lines().map(|x| x.split('|'));
     let tags = lines
         .next()
         .unwrap()
-        .map(|x| x.split("!").next().unwrap())
+        .map(|x| x.split('!').next().unwrap())
         .collect::<Vec<&str>>();
     lines
         .skip(1)
-        .map(|v| tags.iter().map(|x| *x).zip(v).collect())
+        .map(|v| tags.iter().copied().zip(v).collect())
         .collect()
 }
 
@@ -49,7 +49,7 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
             config
                 .get("encoding")
                 .context("missing encoding field in buildinfo")?
-                .split(" ")
+                .split(' ')
                 .nth(1)
                 .context("missing data in encoding field in buildinfo")?,
         )?,
@@ -59,12 +59,12 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
 fn normalize_path(base: &str, file: &str) -> String {
     let base = base.replace("/", "\\");
     let file = file.replace("/", "\\");
-    let mut base: Vec<&str> = base.split("\\").collect();
+    let mut base: Vec<&str> = base.split('\\').collect();
     if base.is_empty() {
         return file;
     }
     base.pop();
-    for part in file.split("\\") {
+    for part in file.split('\\') {
         if part == ".." {
             base.pop();
         } else {
@@ -81,7 +81,7 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         for (name, data) in m {
             use std::io::Write;
             zip.start_file(name.replace("\\", "/"), zip::write::FileOptions::default())?;
-            zip.write(&data)?;
+            zip.write_all(&data)?;
         }
         zip.finish().context("zip archive failed to close")?;
     }
@@ -100,7 +100,7 @@ macro_rules! join_results {
 
 async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
-    let ref client = reqwest::Client::new();
+    let client = &reqwest::Client::new();
     let fetch = |req: Request| async move {
         let url = req.url().to_string();
         trace!("starting fetch of {}", url);
@@ -144,17 +144,17 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         )?;
         (build, cdn)
     };
-    let ref cdn_prefixes: Vec<String> = {
+    let cdn_prefixes: &Vec<String> = &{
         let info = utf8(&*cdns)?;
         let cdn = parse_info(info)
             .into_iter()
             .find(|m| m.get("Name") == Some(&"us"))
             .context("missing us cdn")?;
-        let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(" ");
+        let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(' ');
         let path = cdn.get("Path").context("missing us cdn path")?;
         hosts.map(|s| format!("http://{}/{}", s, path)).collect()
     };
-    let ref fetchmap = tokio::sync::Mutex::new(HashMap::<String, tokio::sync::Mutex<()>>::new());
+    let fetchmap = &tokio::sync::Mutex::new(HashMap::<String, tokio::sync::Mutex<()>>::new());
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
@@ -178,26 +178,23 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         let _guard = async {
             let mut fm = fetchmap.lock().await;
             fm.entry(cache_file.clone())
-                .or_insert(tokio::sync::Mutex::new(()))
+                .or_insert_with(|| tokio::sync::Mutex::new(()))
                 .lock()
                 .await;
         }
         .await;
         trace!("cdn fetch {}", path);
         let cache_file = format!("cache/{}", cache_file);
-        let cached = tokio::fs::read(&cache_file).await;
-        if cached.is_ok() {
+        if let Ok(bytes) = tokio::fs::read(&cache_file).await {
             trace!("loading local {}", cache_file);
-            return Result::<_>::Ok(Bytes::from(cached.unwrap()));
+            return Result::<_>::Ok(Bytes::from(bytes));
         }
         for cdn_prefix in cdn_prefixes {
             let mut req = client.get(format!("{}/{}", cdn_prefix, path));
             if let Some((_, start, end)) = range {
                 req = req.header("Range", format!("bytes={}-{}", start, end));
             }
-            let data = fetch(req.build()?).await;
-            if data.is_ok() {
-                let data = data.unwrap();
+            if let Ok(data) = fetch(req.build()?).await {
                 tokio::fs::write(&cache_file, &data).await?;
                 trace!("wrote local {}", cache_file);
                 return Ok(data);
@@ -210,10 +207,10 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
     let archive_index = async {
         Result::<_>::Ok(archive::Index {
             map: join_results!(
-                parse_config(&utf8(&(cdn_fetch("config", cdn_config).await?))?)
+                parse_config(utf8(&(cdn_fetch("config", cdn_config).await?))?)
                     .get("archives")
                     .context("missing archives in cdninfo")?
-                    .split(" ")
+                    .split(' ')
                     .map(|s| async move {
                         let h = parse_hash(s)?;
                         archive::parse_index(
@@ -228,7 +225,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         })
     };
     let encoding_and_root = async {
-        let buildinfo = parse_build_config(&parse_config(&utf8(
+        let buildinfo = parse_build_config(&parse_config(utf8(
             &(cdn_fetch("config", build_config).await?),
         )?))?;
         let encoding = encoding::parse(&blte::parse(
@@ -275,22 +272,23 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                 .map(|v| v.get(0).unwrap().clone())
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
-                    let dirname = s[..s.len() - 1].split("\\").last()?;
+                    let dirname = s[..s.len() - 1].split('\\').last()?;
                     let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
                     let toc2 = format!("{}{}.toc", s, dirname);
                     root.n2c(&toc1)
                         .and(Ok(toc1))
-                        .or(root.n2c(&toc2).and(Ok(toc2)))
+                        .or_else(|_| root.n2c(&toc2).and(Ok(toc2)))
                         .ok()
                 })
                 .collect();
             let mut result = HashMap::<String, Vec<u8>>::new();
             while !stack.is_empty() {
                 let file = stack.pop().unwrap();
-                let content = match root.n2c(&file).ok().or(fdids
-                    .get(&file.to_lowercase())
-                    .and_then(|k| root.f2c(*k).ok()))
-                {
+                let content = match root.n2c(&file).ok().or_else(|| {
+                    fdids
+                        .get(&file.to_lowercase())
+                        .and_then(|k| root.f2c(*k).ok())
+                }) {
                     Some(ckey) => fetch_content(ckey).await?,
                     None => {
                         eprintln!("skipping file with no content key: {}", file);
@@ -302,7 +300,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
                         .lines()
                         .map(|line| line.trim())
                         .filter(|line| !line.is_empty())
-                        .filter(|line| !line.starts_with("#"))
+                        .filter(|line| !line.starts_with('#'))
                         .for_each(|line| stack.push(normalize_path(&file, line)));
                 } else if file.ends_with(".xml") {
                     use xml::reader::{EventReader, XmlEvent::StartElement};

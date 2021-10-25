@@ -64,7 +64,7 @@ pub fn parse(data: &[u8]) -> Result<Encoding> {
             let ckey = page.get_u128();
             ensure!(!first || first_key == ckey, "first key mismatch in content");
             first = false;
-            ensure!(page.remaining() >= key_count * 16 as usize);
+            ensure!(page.remaining() >= key_count * 16_usize);
             let mut ekeys = Vec::<u128>::new();
             for _ in 0..key_count {
                 ekeys.push(page.get_u128());

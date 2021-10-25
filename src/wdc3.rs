@@ -98,7 +98,7 @@ struct Section {
 
 fn parse_sections<'a>(
     header: &Header,
-    section_headers: &Vec<SectionHeader>,
+    section_headers: &[SectionHeader],
     mut i: &'a [u8],
 ) -> nom::IResult<&'a [u8], Vec<Section>> {
     let mut v = Vec::<Section>::new();
