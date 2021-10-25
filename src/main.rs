@@ -339,9 +339,9 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
 
 #[derive(StructOpt)]
 struct Cli {
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    #[structopt(short, long, parse(from_occurrences))]
     verbose: usize,
-    #[structopt(short = "p", long = "product")]
+    #[structopt(short, long)]
     products: Vec<String>,
 }
 
@@ -371,6 +371,13 @@ async fn main() -> Result<()> {
             .map(|s| (s.clone(), all_products[s.as_str()].to_string()))
             .collect()
     };
+    for dir in ["cache", "zips"] {
+        match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
+            Some(true) => (),
+            Some(false) => bail!("{} is not a directory", dir),
+            None => std::fs::create_dir(dir)?,
+        }
+    }
     join_results!(products.iter().map(|(k, v)| process(k, v))).for_each(drop);
     Ok(())
 }
