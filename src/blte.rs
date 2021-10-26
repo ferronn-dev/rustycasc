@@ -15,7 +15,7 @@ fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
     })
 }
 
-pub fn parse(data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn parse(data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
     ensure!(p.remaining() >= 12, "truncated header");
     ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");

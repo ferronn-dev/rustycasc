@@ -6,7 +6,7 @@ use bytes::Buf;
 use crate::util;
 
 #[derive(Debug)]
-pub struct Encoding {
+pub(crate) struct Encoding {
     especs: Vec<String>,
     cmap: HashMap<u128, (Vec<u128>, u64)>,
     emap: HashMap<u128, (usize, u64)>,
@@ -14,7 +14,7 @@ pub struct Encoding {
 }
 
 impl Encoding {
-    pub fn c2e(&self, c: u128) -> Result<u128> {
+    pub(crate) fn c2e(&self, c: u128) -> Result<u128> {
         Ok(*self
             .cmap
             .get(&c)
@@ -25,7 +25,7 @@ impl Encoding {
     }
 }
 
-pub fn parse(data: &[u8]) -> Result<Encoding> {
+pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
     let mut p = data;
     ensure!(p.remaining() >= 16, "truncated encoding header");
     ensure!(&p.get_u16().to_be_bytes() == b"EN", "not encoding format");

@@ -6,11 +6,11 @@ use bytes::Buf;
 use crate::util;
 
 #[derive(Debug)]
-pub struct Index {
-    pub map: HashMap<u128, (u128, usize, usize)>,
+pub(crate) struct Index {
+    pub(crate) map: HashMap<u128, (u128, usize, usize)>,
 }
 
-pub fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
+pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
     ensure!(data.len() >= 28, "truncated archive index data");
     let non_footer_size = data.len() - 28;
     let bytes_per_block = 4096 + 24;

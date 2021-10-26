@@ -128,7 +128,7 @@ struct File {
     sections: Vec<Section>,
 }
 
-pub fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
+pub(crate) fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
     let File {
         mut sections,
         header: Header {

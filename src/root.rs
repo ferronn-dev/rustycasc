@@ -9,17 +9,17 @@ struct RootData {
     name_hash: Option<u64>,
 }
 
-pub struct Root {
+pub(crate) struct Root {
     data: Vec<RootData>,
     fmap: HashMap<u32, usize>,
     nmap: HashMap<u64, usize>,
 }
 
 impl Root {
-    pub fn f2c(&self, fdid: u32) -> Result<u128> {
+    pub(crate) fn f2c(&self, fdid: u32) -> Result<u128> {
         Ok(self.data[*self.fmap.get(&fdid).context("missing fdid in root")?].content_key)
     }
-    pub fn n2c(&self, name: &str) -> Result<u128> {
+    pub(crate) fn n2c(&self, name: &str) -> Result<u128> {
         let hash: u64 = hashers::jenkins::lookup3(name.to_uppercase().as_bytes());
         // The hi and lo words are swapped for some reason.
         let hi = (hash >> 32) as u32;
@@ -33,7 +33,7 @@ impl Root {
     }
 }
 
-pub fn parse(data: &[u8]) -> Result<Root> {
+pub(crate) fn parse(data: &[u8]) -> Result<Root> {
     let mut p = data;
     ensure!(p.remaining() >= 4, "empty root?");
     let interleave;
