@@ -1,0 +1,13 @@
+name: test
+on:
+  pull_request:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: pre-commit
+      run: python3 -m pip install pre-commit && pre-commit run
+    - name: test
+      run: cargo test
