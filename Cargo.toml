@@ -1,6 +1,6 @@
 [package]
 name = "rustycasc"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2018"
 authors = ["ferronn@ferronn.dev"]
 description = "Parses CASC and generates FrameXML extracts"
