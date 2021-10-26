@@ -1,0 +1,12 @@
+name: release
+on:
+  release:
+    types:
+    - created
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: publish
+      run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
