@@ -22,7 +22,7 @@ nom = "*"
 nom-derive = "*"
 reqwest = "*"
 stderrlog = "*"
-structopt = "0.3.13"
+structopt = "0.3.25"
 tokio = { version = "*", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "*"
 xml-rs = "*"
