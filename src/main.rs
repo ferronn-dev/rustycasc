@@ -7,6 +7,7 @@ mod wdc3;
 
 use anyhow::{bail, ensure, Context, Result};
 use bytes::Bytes;
+use clap::arg_enum;
 use log::trace;
 use reqwest::Request;
 use std::collections::HashMap;
@@ -98,8 +99,34 @@ macro_rules! join_results {
     };
 }
 
-async fn process(product: &str, product_suffix: &str) -> Result<()> {
-    let patch_base = format!("http://us.patch.battle.net:1119/{}", product);
+arg_enum! {
+    enum Product {
+        Vanilla,
+        TBC,
+        Retail,
+    }
+}
+
+enum InstanceType {
+    Live,
+    Ptr,
+}
+
+async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
+    let product_suffix = match &product {
+        Product::Vanilla => "Vanilla",
+        Product::TBC => "TBC",
+        Product::Retail => "Mainline",
+    };
+    let patch_suffix = match (product, instance_type) {
+        (Product::Vanilla, InstanceType::Live) => "wow_classic_era",
+        (Product::Vanilla, InstanceType::Ptr) => "wow_classic_era_ptr",
+        (Product::TBC, InstanceType::Live) => "wow_classic",
+        (Product::TBC, InstanceType::Ptr) => "wow_classic_ptr",
+        (Product::Retail, InstanceType::Live) => "wow",
+        (Product::Retail, InstanceType::Ptr) => "wowt",
+    };
+    let patch_base = format!("http://us.patch.battle.net:1119/{}", patch_suffix);
     let client = &reqwest::Client::new();
     let fetch = |req: Request| async move {
         let url = req.url().to_string();
@@ -265,7 +292,7 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
         .map(|(k, v)| (v.join("").to_lowercase(), k))
         .collect::<HashMap<String, u32>>();
     tokio::fs::write(
-        format!("zips/{}.zip", product),
+        format!("zips/{}.zip", patch_suffix),
         to_zip_archive_bytes({
             let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
                 .into_values()
@@ -339,36 +366,19 @@ async fn process(product: &str, product_suffix: &str) -> Result<()> {
 struct Cli {
     #[structopt(short, long, parse(from_occurrences))]
     verbose: usize,
-    #[structopt(short, long)]
-    products: Vec<String>,
+    #[structopt(short, long, possible_values(&Product::variants()), case_insensitive(true))]
+    product: Product,
+    #[structopt(long)]
+    ptr: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::from_args_safe()?;
+    let cli = Cli::from_args();
     stderrlog::new()
         .module(module_path!())
         .verbosity(cli.verbose)
         .init()?;
-    let all_products = velcro::hash_map! {
-        "wow": "Mainline",
-        "wowt": "Mainline",
-        "wow_classic": "TBC",
-        "wow_classic_era": "Vanilla",
-        "wow_classic_era_ptr": "Vanilla",
-        "wow_classic_ptr": "TBC",
-    };
-    let products: HashMap<String, String> = if cli.products.is_empty() {
-        all_products
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
-    } else {
-        cli.products
-            .iter()
-            .map(|s| (s.clone(), all_products[s.as_str()].to_string()))
-            .collect()
-    };
     for dir in ["cache", "zips"] {
         match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
             Some(true) => (),
@@ -376,8 +386,15 @@ async fn main() -> Result<()> {
             None => std::fs::create_dir(dir)?,
         }
     }
-    join_results!(products.iter().map(|(k, v)| process(k, v))).for_each(drop);
-    Ok(())
+    process(
+        cli.product,
+        if cli.ptr {
+            InstanceType::Ptr
+        } else {
+            InstanceType::Live
+        },
+    )
+    .await
 }
 
 #[cfg(test)]
