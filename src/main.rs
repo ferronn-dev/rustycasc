@@ -296,7 +296,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         to_zip_archive_bytes({
             let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
                 .into_values()
-                .map(|v| v.get(0).unwrap().clone())
+                .flatten()
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
                     let dirname = s[..s.len() - 1].split('\\').last()?;
