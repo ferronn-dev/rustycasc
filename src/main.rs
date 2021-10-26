@@ -309,8 +309,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                 })
                 .collect();
             let mut result = HashMap::<String, Vec<u8>>::new();
-            while !stack.is_empty() {
-                let file = stack.pop().unwrap();
+            while let Some(file) = stack.pop() {
                 let content = match root.n2c(&file).ok().or_else(|| {
                     fdids
                         .get(&file.to_lowercase())
