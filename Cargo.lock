@@ -565,9 +565,9 @@ dependencies = [
 
 [[package]]
 name = "miniz_oxide"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "972e674995946bbd2a8324ad41211cb65b731177c06b5d1aee83ac114a06ebff"
+checksum = "d2b29bd4bc3f33391105ebee3589c19197c4271e3e5a9ec9bfe8127eeff8f082"
 dependencies = [
  "adler",
 ]
@@ -917,7 +917,7 @@ dependencies = [
  "itertools",
  "log",
  "md5",
- "miniz_oxide 0.5.0",
+ "miniz_oxide 0.5.1",
  "nom",
  "nom-derive",
  "reqwest",
