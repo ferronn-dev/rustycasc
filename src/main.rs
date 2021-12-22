@@ -127,7 +127,9 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     };
     let patch_base = format!("http://us.patch.battle.net:1119/{}", patch_suffix);
     let client = &reqwest::Client::new();
+    let fetch_throttle = &tokio::sync::Semaphore::new(5);
     let fetch = |req: Request| async move {
+        let _ = fetch_throttle.acquire().await?;
         let url = req.url().to_string();
         trace!("starting fetch of {}", url);
         let response = client
