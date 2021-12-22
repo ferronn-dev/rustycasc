@@ -6,7 +6,6 @@ mod util;
 mod wdc3;
 
 use anyhow::{bail, ensure, Context, Result};
-use bytes::Bytes;
 use clap::arg_enum;
 use log::trace;
 use reqwest::Request;
@@ -181,7 +180,6 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         let path = cdn.get("Path").context("missing us cdn path")?;
         hosts.map(|s| format!("http://{}/{}", s, path)).collect()
     };
-    let fetchmap = &tokio::sync::Mutex::new(HashMap::<String, tokio::sync::Mutex<()>>::new());
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
@@ -195,35 +193,13 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             h,
             suffix.unwrap_or("")
         );
-        let cache_file = format!(
-            "{}{}{}.{}",
-            tag,
-            suffix.unwrap_or(""),
-            range.clone().map_or("".to_string(), |(s, _, _)| s),
-            h
-        );
-        let _guard = async {
-            let mut fm = fetchmap.lock().await;
-            fm.entry(cache_file.clone())
-                .or_insert_with(|| tokio::sync::Mutex::new(()))
-                .lock()
-                .await;
-        }
-        .await;
         trace!("cdn fetch {}", path);
-        let cache_file = format!("cache/{}", cache_file);
-        if let Ok(bytes) = tokio::fs::read(&cache_file).await {
-            trace!("loading local {}", cache_file);
-            return Result::<_>::Ok(Bytes::from(bytes));
-        }
         for cdn_prefix in cdn_prefixes {
             let mut req = client.get(format!("{}/{}", cdn_prefix, path));
             if let Some((_, start, end)) = range {
                 req = req.header("Range", format!("bytes={}-{}", start, end));
             }
             if let Ok(data) = fetch(req.build()?).await {
-                tokio::fs::write(&cache_file, &data).await?;
-                trace!("wrote local {}", cache_file);
                 return Ok(data);
             }
         }
@@ -378,7 +354,7 @@ async fn main() -> Result<()> {
         .module(module_path!())
         .verbosity(cli.verbose)
         .init()?;
-    for dir in ["cache", "zips"] {
+    for dir in ["zips"] {
         match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
             Some(true) => (),
             Some(false) => bail!("{} is not a directory", dir),
