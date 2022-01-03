@@ -6,11 +6,9 @@ mod util;
 mod wdc3;
 
 use anyhow::{bail, ensure, Context, Result};
-use clap::arg_enum;
 use log::trace;
 use reqwest::Request;
 use std::collections::HashMap;
-use structopt::StructOpt;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s.is_empty() {
@@ -98,12 +96,12 @@ macro_rules! join_results {
     };
 }
 
-arg_enum! {
-    enum Product {
-        Vanilla,
-        TBC,
-        Retail,
-    }
+#[allow(clippy::upper_case_acronyms)]
+#[derive(clap::ArgEnum, Clone)]
+enum Product {
+    Vanilla,
+    TBC,
+    Retail,
 }
 
 enum InstanceType {
@@ -339,19 +337,20 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     .context("zip writing")
 }
 
-#[derive(StructOpt)]
+#[derive(clap::Parser)]
 struct Cli {
-    #[structopt(short, long, parse(from_occurrences))]
+    #[clap(short, long, parse(from_occurrences))]
     verbose: usize,
-    #[structopt(short, long, possible_values(&Product::variants()), case_insensitive(true))]
+    #[clap(short, long, arg_enum, ignore_case(true))]
     product: Product,
-    #[structopt(long)]
+    #[clap(long)]
     ptr: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::from_args();
+    use clap::Parser;
+    let cli = Cli::parse();
     stderrlog::new()
         .module(module_path!())
         .verbosity(cli.verbose)
