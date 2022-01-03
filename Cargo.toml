@@ -21,7 +21,7 @@ md5 = "0.7.0"
 miniz_oxide = "0.5.1"
 nom = "7.1.0"
 nom-derive = "0.10.0"
-reqwest = "0.11.7"
+reqwest = "0.11.8"
 stderrlog = "0.5.1"
 structopt = "0.3.25"
 tokio = { version = "1.15.0", features = ["fs", "macros", "rt-multi-thread"] }
