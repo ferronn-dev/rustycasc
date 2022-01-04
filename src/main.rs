@@ -6,6 +6,7 @@ mod util;
 mod wdc3;
 
 use anyhow::{bail, ensure, Context, Result};
+use futures::future::FutureExt;
 use log::trace;
 use reqwest::Request;
 use std::collections::HashMap;
@@ -215,7 +216,6 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             .map(parse_hash)
             .collect::<Result<Vec<_>>>()?;
         let pb = &indicatif::ProgressBar::new(hashes.len() as u64);
-        use futures::future::FutureExt;
         Result::<_>::Ok(archive::Index {
             map: join_results!(hashes.into_iter().map(|h| async move {
                 archive::parse_index(
@@ -287,6 +287,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                         .ok()
                 })
                 .collect();
+            let pb = &indicatif::ProgressBar::new(stack.len() as u64);
             let mut result = HashMap::<String, Vec<u8>>::new();
             while let Some(file) = stack.pop() {
                 let content = match root.n2c(&file).ok().or_else(|| {
@@ -294,9 +295,10 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                         .get(&file.to_lowercase())
                         .and_then(|k| root.f2c(*k).ok())
                 }) {
-                    Some(ckey) => fetch_content(ckey).await?,
+                    Some(ckey) => fetch_content(ckey).inspect(|_| pb.inc(1)).await?,
                     None => {
                         eprintln!("skipping file with no content key: {}", file);
+                        pb.inc(1);
                         continue;
                     }
                 };
@@ -306,6 +308,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                         .map(|line| line.trim())
                         .filter(|line| !line.is_empty())
                         .filter(|line| !line.starts_with('#'))
+                        .inspect(|_| pb.inc_length(1))
                         .for_each(|line| stack.push(normalize_path(&file, line)));
                 } else if file.ends_with(".xml") {
                     use xml::reader::{EventReader, XmlEvent::StartElement};
@@ -327,6 +330,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                             .flat_map(|(_, attrs)| attrs)
                             .filter(|attr| attr.name.local_name == "file")
                             .map(|attr| attr.value)
+                            .inspect(|_| pb.inc_length(1))
                             .for_each(|value| stack.push(normalize_path(&file, &value)))
                         },
                     )?;
