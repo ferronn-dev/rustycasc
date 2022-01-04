@@ -208,20 +208,26 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     let cdn_fetch =
         |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
     let archive_index = async {
+        let hashes = parse_config(utf8(&(cdn_fetch("config", cdn_config).await?))?)
+            .get("archives")
+            .context("missing archives in cdninfo")?
+            .split(' ')
+            .map(parse_hash)
+            .collect::<Result<Vec<_>>>()?;
+        let pb = &indicatif::ProgressBar::new(hashes.len() as u64);
+        use futures::future::FutureExt;
         Result::<_>::Ok(archive::Index {
-            map: join_results!(
-                parse_config(utf8(&(cdn_fetch("config", cdn_config).await?))?)
-                    .get("archives")
-                    .context("missing archives in cdninfo")?
-                    .split(' ')
-                    .map(|s| async move {
-                        let h = parse_hash(s)?;
-                        archive::parse_index(
-                            h,
-                            &(do_cdn_fetch("data", h, Some(".index"), None).await?),
-                        )
-                    })
-            )
+            map: join_results!(hashes.into_iter().map(|h| async move {
+                archive::parse_index(
+                    h,
+                    &(do_cdn_fetch("data", h, Some(".index"), None)
+                        .then(|x| async move {
+                            pb.inc(1);
+                            x
+                        })
+                        .await?),
+                )
+            }))
             .map(|archive::Index { map }| map)
             .flatten()
             .collect(),
