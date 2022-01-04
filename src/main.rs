@@ -221,10 +221,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                 archive::parse_index(
                     h,
                     &(do_cdn_fetch("data", h, Some(".index"), None)
-                        .then(|x| async move {
-                            pb.inc(1);
-                            x
-                        })
+                        .inspect(|_| pb.inc(1))
                         .await?),
                 )
             }))
