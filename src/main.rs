@@ -148,11 +148,11 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         Ok(data)
     };
     let utf8 = std::str::from_utf8;
-    let (versions, cdns) = futures::join!(
+    let (versions, cdns) = futures::future::try_join(
         fetch(client.get(format!("{}/versions", patch_base)).build()?),
-        fetch(client.get(format!("{}/cdns", patch_base)).build()?)
-    );
-    let (versions, cdns) = (versions?, cdns?);
+        fetch(client.get(format!("{}/cdns", patch_base)).build()?),
+    )
+    .await?;
     let (build_config, cdn_config) = {
         let info = utf8(&*versions)?;
         let version = parse_info(info)
@@ -242,8 +242,8 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         )?)?;
         Result::<_>::Ok((encoding, root))
     };
-    let (archive_index, encoding_and_root) = futures::join!(archive_index, encoding_and_root);
-    let (archive_index, (encoding, root)) = (archive_index?, encoding_and_root?);
+    let (archive_index, (encoding, root)) =
+        futures::future::try_join(archive_index, encoding_and_root).await?;
     let (archive_index, encoding, root) = (&archive_index, &encoding, &root);
     let fetch_content = |ckey| async move {
         let (archive, size, offset) = archive_index
