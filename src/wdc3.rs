@@ -6,22 +6,22 @@ use nom_derive::{nom, NomLE, Parse};
 
 #[derive(Debug, NomLE)]
 struct Header {
-    magic: [u8; 4],
-    record_count: u32,
-    field_count: u32,
+    _magic: [u8; 4],
+    _record_count: u32,
+    _field_count: u32,
     record_size: u32,
-    string_table_size: u32,
-    table_hash: u32,
-    layout_hash: u32,
-    min_id: u32,
-    max_id: u32,
-    locale: u32,
+    _string_table_size: u32,
+    _table_hash: u32,
+    _layout_hash: u32,
+    _min_id: u32,
+    _max_id: u32,
+    _locale: u32,
     flags: u16,
-    id_index: u16,
+    _id_index: u16,
     total_field_count: u32,
-    bitpacked_data_offset: u32,
-    lookup_column_count: u32,
-    field_storage_info_size: u32,
+    _bitpacked_data_offset: u32,
+    _lookup_column_count: u32,
+    _field_storage_info_size: u32,
     common_data_size: u32,
     pallet_data_size: u32,
     section_count: u32,
@@ -29,11 +29,11 @@ struct Header {
 
 #[derive(Debug, NomLE)]
 struct SectionHeader {
-    tact_key_hash: u64,
-    file_offset: u32,
+    _tact_key_hash: u64,
+    _file_offset: u32,
     record_count: u32,
     string_table_size: u32,
-    offset_records_end: u32,
+    _offset_records_end: u32,
     id_list_size: u32,
     relationship_data_size: u32,
     offset_map_id_count: u32,
@@ -42,19 +42,19 @@ struct SectionHeader {
 
 #[derive(Debug, NomLE)]
 struct FieldStructure {
-    size: i16,
-    position: u16,
+    _size: i16,
+    _position: u16,
 }
 
 #[derive(Debug, NomLE)]
 struct FieldStorageInfo {
-    field_offset_bits: u16,
-    field_size_bits: u16,
-    additional_data_size: u32,
-    storage_type: u32,
-    compression1: u32,
-    compression2: u32,
-    compression3: u32,
+    _field_offset_bits: u16,
+    _field_size_bits: u16,
+    _additional_data_size: u32,
+    _storage_type: u32,
+    _compression1: u32,
+    _compression2: u32,
+    _compression3: u32,
 }
 
 #[derive(Debug, NomLE)]
@@ -66,14 +66,14 @@ struct Record {
 
 #[derive(Debug, NomLE)]
 struct CopyTableEntry {
-    id_of_new_row: u32,
-    id_of_copied_row: u32,
+    _id_of_new_row: u32,
+    _id_of_copied_row: u32,
 }
 
 #[derive(Debug, NomLE)]
 struct OffsetMapEntry {
-    offset: u32,
-    size: u16,
+    _offset: u32,
+    _size: u16,
 }
 
 #[derive(Debug, NomLE)]
@@ -89,11 +89,11 @@ struct Section {
     #[nom(Count = "(section_header.id_list_size / 4) as usize")]
     id_list: Vec<u32>,
     #[nom(Count = "section_header.copy_table_count")]
-    copy_table: Vec<CopyTableEntry>,
+    _copy_table: Vec<CopyTableEntry>,
     #[nom(Count = "section_header.offset_map_id_count")]
-    offset_map: Vec<OffsetMapEntry>,
+    _offset_map: Vec<OffsetMapEntry>,
     #[nom(Count = "section_header.relationship_data_size")]
-    relationship_data: Vec<u8>,
+    _relationship_data: Vec<u8>,
 }
 
 fn parse_sections<'a>(
@@ -115,16 +115,16 @@ fn parse_sections<'a>(
 struct File {
     header: Header,
     #[nom(Count = "header.section_count")]
-    section_headers: Vec<SectionHeader>,
+    _section_headers: Vec<SectionHeader>,
     #[nom(Count = "header.total_field_count")]
-    fields: Vec<FieldStructure>,
+    _fields: Vec<FieldStructure>,
     #[nom(Count = "header.total_field_count")]
-    field_info: Vec<FieldStorageInfo>,
+    _field_info: Vec<FieldStorageInfo>,
     #[nom(Count = "header.pallet_data_size")]
-    pallet_data: Vec<u8>,
+    _pallet_data: Vec<u8>,
     #[nom(Count = "header.common_data_size")]
-    common_data: Vec<u8>,
-    #[nom(Parse = "|i| parse_sections(&header, &section_headers, i)")]
+    _common_data: Vec<u8>,
+    #[nom(Parse = "|i| parse_sections(&header, &_section_headers, i)")]
     sections: Vec<Section>,
 }
 

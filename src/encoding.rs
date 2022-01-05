@@ -7,10 +7,10 @@ use crate::util;
 
 #[derive(Debug)]
 pub(crate) struct Encoding {
-    especs: Vec<String>,
+    _especs: Vec<String>,
     cmap: HashMap<u128, (Vec<u128>, u64)>,
-    emap: HashMap<u128, (usize, u64)>,
-    espec: String,
+    _emap: HashMap<u128, (usize, u64)>,
+    _espec: String,
 }
 
 impl Encoding {
@@ -99,9 +99,9 @@ pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
     }
     let espec = String::from_utf8(p.to_vec())?;
     Ok(Encoding {
-        especs,
+        _especs: especs,
         cmap,
-        emap,
-        espec,
+        _emap: emap,
+        _espec: espec,
     })
 }

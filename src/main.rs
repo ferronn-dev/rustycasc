@@ -308,8 +308,10 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                         .map(|line| line.trim())
                         .filter(|line| !line.is_empty())
                         .filter(|line| !line.starts_with('#'))
-                        .inspect(|_| pb.inc_length(1))
-                        .for_each(|line| stack.push(normalize_path(&file, line)));
+                        .for_each(|line| {
+                            pb.inc_length(1);
+                            stack.push(normalize_path(&file, line))
+                        });
                 } else if file.ends_with(".xml") {
                     use xml::reader::{EventReader, XmlEvent::StartElement};
                     let xml = &content.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&content);
@@ -330,8 +332,10 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                             .flat_map(|(_, attrs)| attrs)
                             .filter(|attr| attr.name.local_name == "file")
                             .map(|attr| attr.value)
-                            .inspect(|_| pb.inc_length(1))
-                            .for_each(|value| stack.push(normalize_path(&file, &value)))
+                            .for_each(|value| {
+                                pb.inc_length(1);
+                                stack.push(normalize_path(&file, &value))
+                            })
                         },
                     )?;
                 }
