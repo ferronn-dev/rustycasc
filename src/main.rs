@@ -87,16 +87,6 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     Ok(zipbuf)
 }
 
-macro_rules! join_results {
-    ($it:expr) => {
-        futures::future::join_all($it)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-    };
-}
-
 #[allow(clippy::upper_case_acronyms)]
 #[derive(clap::ArgEnum, Clone)]
 enum Product {
@@ -217,7 +207,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             .collect::<Result<Vec<_>>>()?;
         let pb = &indicatif::ProgressBar::new(hashes.len() as u64);
         Result::<_>::Ok(archive::Index {
-            map: join_results!(hashes.into_iter().map(|h| async move {
+            map: futures::future::try_join_all(hashes.into_iter().map(|h| async move {
                 archive::parse_index(
                     h,
                     &(do_cdn_fetch("data", h, Some(".index"), None)
@@ -225,6 +215,8 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                         .await?),
                 )
             }))
+            .await?
+            .into_iter()
             .map(|archive::Index { map }| map)
             .flatten()
             .collect(),
