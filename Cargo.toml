@@ -27,4 +27,4 @@ stderrlog = "0.5.1"
 tokio = { version = "1.15.0", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "0.5.3"
 xml-rs = "0.8.4"
-zip = "0.5.13"
+zip = "0.6.0"
