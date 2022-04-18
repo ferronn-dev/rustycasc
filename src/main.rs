@@ -174,7 +174,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
-                        range: Option<(String, usize, usize)>| async move {
+                        range: Option<(usize, usize)>| async move {
         let h = format!("{:032x}", hash);
         let path = format!(
             "{}/{}/{}/{}{}",
@@ -187,7 +187,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         trace!("cdn fetch {}", path);
         for cdn_prefix in cdn_prefixes {
             let mut req = client.get(format!("{}/{}", cdn_prefix, path));
-            if let Some((_, start, end)) = range {
+            if let Some((start, end)) = range {
                 req = req.header("Range", format!("bytes={}-{}", start, end));
             }
             if let Ok(data) = fetch(req.build()?).await {
@@ -241,13 +241,8 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             .map
             .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
-        let response = do_cdn_fetch(
-            "data",
-            *archive,
-            None,
-            Some((format!(".{:032x}", ckey), *offset, *offset + *size - 1)),
-        )
-        .await?;
+        let response =
+            do_cdn_fetch("data", *archive, None, Some((*offset, *offset + *size - 1))).await?;
         let bytes = blte::parse(&response)?;
         ensure!(
             util::md5hash(&bytes) == ckey,
