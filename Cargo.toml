@@ -10,21 +10,21 @@ license-file = "LICENSE"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.52"
+anyhow = "1.0.56"
 bytes = "1.1.0"
-clap = { version = "3.0.7", features = ["derive"] }
-futures = "0.3.19"
+clap = { version = "3.1.9", features = ["derive"] }
+futures = "0.3.21"
 hashers = "1.0.1"
 indicatif = "0.16.2"
 itertools = "0.10.3"
-log = "0.4.14"
+log = "0.4.16"
 md5 = "0.7.0"
 miniz_oxide = "0.5.1"
-nom = "7.1.0"
+nom = "7.1.1"
 nom-derive = "0.10.0"
-reqwest = "0.11.9"
+reqwest = "0.11.10"
 stderrlog = "0.5.1"
-tokio = { version = "1.15.0", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.17.0", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "0.5.3"
 xml-rs = "0.8.4"
-zip = "0.5.13"
+zip = "0.6.2"
