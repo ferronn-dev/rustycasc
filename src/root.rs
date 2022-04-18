@@ -1,23 +1,23 @@
 use std::{collections::HashMap, convert::TryInto};
 
-use crate::types::ContentKey;
+use crate::types::{ContentKey, FileDataID};
 use anyhow::{ensure, Context, Result};
 use bytes::Buf;
 
 struct RootData {
-    fdid: u32,
+    fdid: FileDataID,
     content_key: ContentKey,
     name_hash: Option<u64>,
 }
 
 pub(crate) struct Root {
     data: Vec<RootData>,
-    fmap: HashMap<u32, usize>,
+    fmap: HashMap<FileDataID, usize>,
     nmap: HashMap<u64, usize>,
 }
 
 impl Root {
-    pub(crate) fn f2c(&self, fdid: u32) -> Result<ContentKey> {
+    pub(crate) fn f2c(&self, fdid: FileDataID) -> Result<ContentKey> {
         Ok(self.data[*self.fmap.get(&fdid).context("missing fdid in root")?].content_key)
     }
     pub(crate) fn n2c(&self, name: &str) -> Result<ContentKey> {
@@ -60,11 +60,11 @@ pub(crate) fn parse(data: &[u8]) -> Result<Root> {
             p.remaining() >= 4 * num_records,
             "truncated filedataid delta block"
         );
-        let mut fdids = Vec::<u32>::new();
+        let mut fdids = Vec::<FileDataID>::new();
         let mut fdid = -1;
         for _ in 0..num_records {
             fdid = fdid + p.get_i32_le() + 1;
-            fdids.push(fdid.try_into()?)
+            fdids.push(FileDataID(fdid.try_into()?))
         }
         let mut content_keys = Vec::<ContentKey>::new();
         let mut name_hashes = Vec::<Option<u64>>::new();

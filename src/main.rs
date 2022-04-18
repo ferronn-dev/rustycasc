@@ -6,7 +6,7 @@ mod types;
 mod util;
 mod wdc3;
 
-use crate::types::{ArchiveKey, ContentKey, EncodingKey};
+use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
 use anyhow::{bail, ensure, Context, Result};
 use futures::future::FutureExt;
 use log::trace;
@@ -257,14 +257,14 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
-    let fdids = wdc3::strings(&fetch_fdid(1375801).await?)?
+    let fdids = wdc3::strings(&fetch_fdid(FileDataID(1375801)).await?)?
         .into_iter()
-        .map(|(k, v)| (v.join("").to_lowercase(), k))
-        .collect::<HashMap<String, u32>>();
+        .map(|(k, v)| (v.join("").to_lowercase(), FileDataID(k)))
+        .collect::<HashMap<String, FileDataID>>();
     tokio::fs::write(
         format!("zips/{}.zip", patch_suffix),
         to_zip_archive_bytes({
-            let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(1267335).await?)?
+            let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(FileDataID(1267335)).await?)?
                 .into_values()
                 .flatten()
                 .chain(["Interface\\FrameXML\\".to_string()])
