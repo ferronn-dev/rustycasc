@@ -56,8 +56,8 @@ fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
 }
 
 fn normalize_path(base: &str, file: &str) -> String {
-    let base = base.replace("/", "\\");
-    let file = file.replace("/", "\\");
+    let base = base.replace('/', "\\");
+    let file = file.replace('/', "\\");
     let mut base: Vec<&str> = base.split('\\').collect();
     if base.is_empty() {
         return file;
@@ -79,7 +79,7 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
         for (name, data) in m {
             use std::io::Write;
-            zip.start_file(name.replace("\\", "/"), zip::write::FileOptions::default())?;
+            zip.start_file(name.replace('\\', "/"), zip::write::FileOptions::default())?;
             zip.write_all(&data)?;
         }
         zip.finish().context("zip archive failed to close")?;
@@ -217,8 +217,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             }))
             .await?
             .into_iter()
-            .map(|archive::Index { map }| map)
-            .flatten()
+            .flat_map(|archive::Index { map }| map)
             .collect(),
         })
     };
