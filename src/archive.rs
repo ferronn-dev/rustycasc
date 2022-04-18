@@ -3,15 +3,15 @@ use std::{collections::HashMap, convert::TryInto};
 use anyhow::{ensure, Result};
 use bytes::Buf;
 
-use crate::types::EncodingKey;
+use crate::types::{ArchiveKey, EncodingKey};
 use crate::util;
 
 #[derive(Debug)]
 pub(crate) struct Index {
-    pub(crate) map: HashMap<EncodingKey, (u128, usize, usize)>,
+    pub(crate) map: HashMap<EncodingKey, (ArchiveKey, usize, usize)>,
 }
 
-pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
+pub(crate) fn parse_index(name: ArchiveKey, data: &[u8]) -> Result<Index> {
     ensure!(data.len() >= 28, "truncated archive index data");
     let non_footer_size = data.len() - 28;
     let bytes_per_block = 4096 + 24;
@@ -21,7 +21,7 @@ pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
         "invalid archive index format"
     );
     let mut footer = &data[non_footer_size..];
-    ensure!(util::md5hash(footer) == name, "bad footer name");
+    ensure!(util::md5hash(footer) == name.0, "bad footer name");
     let toc_size = num_blocks * 24;
     let toc = &data[non_footer_size - toc_size..non_footer_size];
     ensure!(
@@ -59,7 +59,7 @@ pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
             "archive index footer checksum"
         );
     };
-    let mut map = HashMap::<EncodingKey, (u128, usize, usize)>::new();
+    let mut map = HashMap::<EncodingKey, (ArchiveKey, usize, usize)>::new();
     let mut p = &data[..non_footer_size - toc_size];
     let mut entries = &toc[..(16 * num_blocks)];
     let mut blockhashes = &toc[(16 * num_blocks)..];

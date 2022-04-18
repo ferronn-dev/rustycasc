@@ -6,7 +6,7 @@ mod types;
 mod util;
 mod wdc3;
 
-use crate::types::{ContentKey, EncodingKey};
+use crate::types::{ArchiveKey, ContentKey, EncodingKey};
 use anyhow::{bail, ensure, Context, Result};
 use futures::future::FutureExt;
 use log::trace;
@@ -213,7 +213,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         Result::<_>::Ok(archive::Index {
             map: futures::future::try_join_all(hashes.into_iter().map(|h| async move {
                 archive::parse_index(
-                    h,
+                    ArchiveKey(h),
                     &(do_cdn_fetch("data", h, Some(".index"), None)
                         .inspect(|_| pb.inc(1))
                         .await?),
@@ -245,8 +245,13 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             .map
             .get(&encoding.c2e(ckey)?)
             .context("missing index key")?;
-        let response =
-            do_cdn_fetch("data", *archive, None, Some((*offset, *offset + *size - 1))).await?;
+        let response = do_cdn_fetch(
+            "data",
+            archive.0,
+            None,
+            Some((*offset, *offset + *size - 1)),
+        )
+        .await?;
         let bytes = blte::parse(&response)?;
         ensure!(util::md5hash(&bytes) == ckey.0, "checksum fail on {}", ckey);
         Ok(bytes)
