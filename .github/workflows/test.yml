@@ -7,7 +7,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: pre-commit
-      run: python3 -m pip install pre-commit && pre-commit run
-    - name: test
-      run: cargo test
+    - uses: pre-commit/action@v2.0.3
