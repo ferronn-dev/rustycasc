@@ -1,11 +1,12 @@
 use std::{collections::HashMap, convert::TryInto};
 
+use crate::types::ContentKey;
 use anyhow::{ensure, Context, Result};
 use bytes::Buf;
 
 struct RootData {
     fdid: u32,
-    content_key: u128,
+    content_key: ContentKey,
     name_hash: Option<u64>,
 }
 
@@ -16,10 +17,10 @@ pub(crate) struct Root {
 }
 
 impl Root {
-    pub(crate) fn f2c(&self, fdid: u32) -> Result<u128> {
+    pub(crate) fn f2c(&self, fdid: u32) -> Result<ContentKey> {
         Ok(self.data[*self.fmap.get(&fdid).context("missing fdid in root")?].content_key)
     }
-    pub(crate) fn n2c(&self, name: &str) -> Result<u128> {
+    pub(crate) fn n2c(&self, name: &str) -> Result<ContentKey> {
         let hash: u64 = hashers::jenkins::lookup3(name.to_uppercase().as_bytes());
         // The hi and lo words are swapped for some reason.
         let hi = (hash >> 32) as u32;
@@ -65,16 +66,16 @@ pub(crate) fn parse(data: &[u8]) -> Result<Root> {
             fdid = fdid + p.get_i32_le() + 1;
             fdids.push(fdid.try_into()?)
         }
-        let mut content_keys = Vec::<u128>::new();
+        let mut content_keys = Vec::<ContentKey>::new();
         let mut name_hashes = Vec::<Option<u64>>::new();
         if interleave {
             for _ in 0..num_records {
-                content_keys.push(p.get_u128());
+                content_keys.push(ContentKey(p.get_u128()));
                 name_hashes.push(Some(p.get_u64_le()));
             }
         } else {
             for _ in 0..num_records {
-                content_keys.push(p.get_u128());
+                content_keys.push(ContentKey(p.get_u128()));
             }
             if !can_skip || content_flags & 0x10000000 == 0 {
                 for _ in 0..num_records {

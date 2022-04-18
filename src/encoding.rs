@@ -3,25 +3,26 @@ use std::{collections::HashMap, convert::TryInto};
 use anyhow::{ensure, Context, Result};
 use bytes::Buf;
 
+use crate::types::{ContentKey, EncodingKey};
 use crate::util;
 
 #[derive(Debug)]
 pub(crate) struct Encoding {
     _especs: Vec<String>,
-    cmap: HashMap<u128, (Vec<u128>, u64)>,
+    cmap: HashMap<ContentKey, (Vec<EncodingKey>, u64)>,
     _emap: HashMap<u128, (usize, u64)>,
     _espec: String,
 }
 
 impl Encoding {
-    pub(crate) fn c2e(&self, c: u128) -> Result<u128> {
+    pub(crate) fn c2e(&self, c: ContentKey) -> Result<EncodingKey> {
         Ok(*self
             .cmap
             .get(&c)
-            .context(format!("no encoding key for content key {:032x}", c))?
+            .context(format!("no encoding key for content key {}", c))?
             .0
             .get(0)
-            .context(format!("missing encoding key for content key {:032x}", c))?)
+            .context(format!("missing encoding key for content key {}", c))?)
     }
 }
 
@@ -45,11 +46,11 @@ pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
         .collect::<Result<Vec<String>>>()?;
     p.advance(espec_size);
     ensure!(p.remaining() >= ccount * 32);
-    let mut cpages = Vec::<(u128, u128)>::new();
+    let mut cpages = Vec::<(ContentKey, u128)>::new();
     for _ in 0..ccount {
-        cpages.push((p.get_u128(), p.get_u128()));
+        cpages.push((ContentKey(p.get_u128()), p.get_u128()));
     }
-    let mut cmap = HashMap::<u128, (Vec<u128>, u64)>::new();
+    let mut cmap = HashMap::<ContentKey, (Vec<EncodingKey>, u64)>::new();
     for (first_key, hash) in cpages {
         let pagesize = cpagekb * 1024;
         ensure!(
@@ -61,13 +62,13 @@ pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
         while page.remaining() >= 22 && page.chunk()[0] != b'0' {
             let key_count = page.get_u8().try_into()?;
             let file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
-            let ckey = page.get_u128();
+            let ckey = ContentKey(page.get_u128());
             ensure!(!first || first_key == ckey, "first key mismatch in content");
             first = false;
             ensure!(page.remaining() >= key_count * 16_usize);
-            let mut ekeys = Vec::<u128>::new();
+            let mut ekeys = Vec::<EncodingKey>::new();
             for _ in 0..key_count {
-                ekeys.push(page.get_u128());
+                ekeys.push(EncodingKey(page.get_u128()));
             }
             cmap.insert(ckey, (ekeys, file_size));
         }

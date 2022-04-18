@@ -3,11 +3,12 @@ use std::{collections::HashMap, convert::TryInto};
 use anyhow::{ensure, Result};
 use bytes::Buf;
 
+use crate::types::EncodingKey;
 use crate::util;
 
 #[derive(Debug)]
 pub(crate) struct Index {
-    pub(crate) map: HashMap<u128, (u128, usize, usize)>,
+    pub(crate) map: HashMap<EncodingKey, (u128, usize, usize)>,
 }
 
 pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
@@ -58,7 +59,7 @@ pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
             "archive index footer checksum"
         );
     };
-    let mut map = HashMap::<u128, (u128, usize, usize)>::new();
+    let mut map = HashMap::<EncodingKey, (u128, usize, usize)>::new();
     let mut p = &data[..non_footer_size - toc_size];
     let mut entries = &toc[..(16 * num_blocks)];
     let mut blockhashes = &toc[(16 * num_blocks)..];
@@ -69,10 +70,10 @@ pub(crate) fn parse_index(name: u128, data: &[u8]) -> Result<Index> {
             (util::md5hash(block) >> 64) as u64 == block_checksum,
             "archive index block checksum"
         );
-        let last_ekey = entries.get_u128();
+        let last_ekey = EncodingKey(entries.get_u128());
         let mut found = false;
         while block.remaining() >= 24 {
-            let ekey = block.get_u128();
+            let ekey = EncodingKey(block.get_u128());
             let size = block.get_u32().try_into()?;
             let offset = block.get_u32().try_into()?;
             ensure!(

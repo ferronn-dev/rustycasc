@@ -2,9 +2,11 @@ mod archive;
 mod blte;
 mod encoding;
 mod root;
+mod types;
 mod util;
 mod wdc3;
 
+use crate::types::{ContentKey, EncodingKey};
 use anyhow::{bail, ensure, Context, Result};
 use futures::future::FutureExt;
 use log::trace;
@@ -33,8 +35,8 @@ fn parse_config(s: &str) -> HashMap<&str, &str> {
 }
 
 struct BuildConfig {
-    root: u128,
-    encoding: u128,
+    root: ContentKey,
+    encoding: EncodingKey,
 }
 
 fn parse_hash(s: &str) -> Result<u128> {
@@ -43,15 +45,17 @@ fn parse_hash(s: &str) -> Result<u128> {
 
 fn parse_build_config(config: &HashMap<&str, &str>) -> Result<BuildConfig> {
     Ok(BuildConfig {
-        root: parse_hash(config.get("root").context("build config: root")?)?,
-        encoding: parse_hash(
+        root: ContentKey(parse_hash(
+            config.get("root").context("build config: root")?,
+        )?),
+        encoding: EncodingKey(parse_hash(
             config
                 .get("encoding")
                 .context("missing encoding field in buildinfo")?
                 .split(' ')
                 .nth(1)
                 .context("missing data in encoding field in buildinfo")?,
-        )?,
+        )?),
     })
 }
 
@@ -226,10 +230,10 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
             &(cdn_fetch("config", build_config).await?),
         )?))?;
         let encoding = encoding::parse(&blte::parse(
-            &(cdn_fetch("data", buildinfo.encoding).await?),
+            &(cdn_fetch("data", buildinfo.encoding.0).await?),
         )?)?;
         let root = root::parse(&blte::parse(
-            &cdn_fetch("data", encoding.c2e(buildinfo.root)?).await?,
+            &cdn_fetch("data", encoding.c2e(buildinfo.root)?.0).await?,
         )?)?;
         Result::<_>::Ok((encoding, root))
     };
@@ -244,11 +248,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         let response =
             do_cdn_fetch("data", *archive, None, Some((*offset, *offset + *size - 1))).await?;
         let bytes = blte::parse(&response)?;
-        ensure!(
-            util::md5hash(&bytes) == ckey,
-            "checksum fail on {:032x}",
-            ckey
-        );
+        ensure!(util::md5hash(&bytes) == ckey.0, "checksum fail on {}", ckey);
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
