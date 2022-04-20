@@ -438,9 +438,7 @@ fn ensuredir(dir: &str) -> Result<()> {
 
 async fn builddb() -> Result<()> {
     ensuredir("cascdb")?;
-    ensuredir("cascdb/archive")?;
-    ensuredir("cascdb/content")?;
-    ensuredir("cascdb/index")?;
+    ensuredir("cascdb/config")?;
     let client = reqwest::Client::new();
     let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
         client.fetch_version("wow_classic_era"),
@@ -462,31 +460,28 @@ async fn builddb() -> Result<()> {
             &self.cdn_prefixes
         }
     }
+    impl CdnClient {
+        async fn fetch_config_bytes(&self, hash: u128) -> Result<Bytes> {
+            let h = format!("{:032x}", hash);
+            let bytes = self.fetch_cdn_bytes("config", hash, None, None).await?;
+            ensure!(hash == util::md5hash(&bytes));
+            ensuredir(&format!("cascdb/config/{}", &h[0..2]))?;
+            ensuredir(&format!("cascdb/config/{}/{}", &h[0..2], &h[2..4]))?;
+            tokio::fs::write(
+                format!("cascdb/config/{}/{}/{}", &h[0..2], &h[2..4], h),
+                &bytes,
+            )
+            .await?;
+            Ok(bytes)
+        }
+    }
     let client = &CdnClient {
         client,
         cdn_prefixes,
     };
     futures::future::try_join(
-        async {
-            tokio::fs::write(
-                "build.txt",
-                client
-                    .fetch_cdn_bytes("config", build_config, None, None)
-                    .await?,
-            )
-            .await
-            .context("writing build.txt")
-        },
-        async {
-            tokio::fs::write(
-                "cdn.txt",
-                client
-                    .fetch_cdn_bytes("config", cdn_config, None, None)
-                    .await?,
-            )
-            .await
-            .context("writing cdn.txt")
-        },
+        client.fetch_config_bytes(build_config),
+        client.fetch_config_bytes(cdn_config),
     )
     .await?;
     Ok(())
