@@ -350,8 +350,14 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum CliCommands {
+    #[clap(name = "db")]
+    Database(CliDatabaseArgs),
+    #[clap(name = "framexml")]
     FrameXml(CliFrameXmlArgs),
 }
+
+#[derive(clap::Args)]
+struct CliDatabaseArgs {}
 
 #[derive(clap::Args)]
 struct CliFrameXmlArgs {
@@ -377,8 +383,9 @@ async fn main() -> Result<()> {
         }
     }
     match &cli.command {
+        CliCommands::Database(_) => Ok(()),
         CliCommands::FrameXml(args) => {
-            return process(
+            process(
                 args.product,
                 if args.ptr {
                     InstanceType::Ptr
