@@ -92,7 +92,7 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(clap::ArgEnum, Clone)]
+#[derive(clap::ArgEnum, Clone, Copy)]
 enum Product {
     Vanilla,
     TBC,
@@ -340,9 +340,21 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
 }
 
 #[derive(clap::Parser)]
+#[clap(version, about)]
 struct Cli {
+    #[clap(subcommand)]
+    command: CliCommands,
     #[clap(short, long, parse(from_occurrences))]
     verbose: usize,
+}
+
+#[derive(clap::Subcommand)]
+enum CliCommands {
+    FrameXml(CliFrameXmlArgs),
+}
+
+#[derive(clap::Args)]
+struct CliFrameXmlArgs {
     #[clap(short, long, arg_enum, ignore_case(true))]
     product: Product,
     #[clap(long)]
@@ -364,15 +376,19 @@ async fn main() -> Result<()> {
             None => std::fs::create_dir(dir)?,
         }
     }
-    process(
-        cli.product,
-        if cli.ptr {
-            InstanceType::Ptr
-        } else {
-            InstanceType::Live
-        },
-    )
-    .await
+    match &cli.command {
+        CliCommands::FrameXml(args) => {
+            return process(
+                args.product,
+                if args.ptr {
+                    InstanceType::Ptr
+                } else {
+                    InstanceType::Live
+                },
+            )
+            .await
+        }
+    }
 }
 
 #[cfg(test)]
