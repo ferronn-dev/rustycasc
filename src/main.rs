@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use log::trace;
 use reqwest::Request;
 use std::collections::HashMap;
+use std::str::from_utf8;
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s.is_empty() {
@@ -141,14 +142,13 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         trace!("done retrieving {}", url);
         Ok(data)
     };
-    let utf8 = std::str::from_utf8;
     let (versions, cdns) = futures::future::try_join(
         fetch(client.get(format!("{}/versions", patch_base)).build()?),
         fetch(client.get(format!("{}/cdns", patch_base)).build()?),
     )
     .await?;
     let (build_config, cdn_config) = {
-        let info = utf8(&*versions)?;
+        let info = from_utf8(&*versions)?;
         let version = parse_info(info)
             .into_iter()
             .find(|m| m.get("Region") == Some(&"us"))
@@ -166,7 +166,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         (build, cdn)
     };
     let cdn_prefixes: &Vec<String> = &{
-        let info = utf8(&*cdns)?;
+        let info = from_utf8(&*cdns)?;
         let cdn = parse_info(info)
             .into_iter()
             .find(|m| m.get("Name") == Some(&"us"))
@@ -203,7 +203,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     let cdn_fetch =
         |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
     let archive_index = async {
-        let hashes = parse_config(utf8(&(cdn_fetch("config", cdn_config).await?))?)
+        let hashes = parse_config(from_utf8(&(cdn_fetch("config", cdn_config).await?))?)
             .get("archives")
             .context("missing archives in cdninfo")?
             .split(' ')
@@ -226,7 +226,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         })
     };
     let encoding_and_root = async {
-        let buildinfo = parse_build_config(&parse_config(utf8(
+        let buildinfo = parse_build_config(&parse_config(from_utf8(
             &(cdn_fetch("config", build_config).await?),
         )?))?;
         let encoding = encoding::parse(&blte::parse(
@@ -294,7 +294,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
                     }
                 };
                 if file.ends_with(".toc") {
-                    utf8(&content)?
+                    from_utf8(&content)?
                         .lines()
                         .map(|line| line.trim())
                         .filter(|line| !line.is_empty())
