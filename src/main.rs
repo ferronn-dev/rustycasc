@@ -8,11 +8,55 @@ mod wdc3;
 
 use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
 use anyhow::{bail, ensure, Context, Result};
+use async_trait::async_trait;
+use bytes::Bytes;
 use futures::future::FutureExt;
 use log::trace;
-use reqwest::Request;
 use std::collections::HashMap;
 use std::str::from_utf8;
+
+#[async_trait]
+trait BytesFetcher {
+    async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes>;
+}
+
+#[async_trait]
+impl BytesFetcher for reqwest::Client {
+    async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
+        let mut req = self.get(&url);
+        if let Some((start, end)) = range {
+            req = req.header("Range", format!("bytes={}-{}", start, end));
+        }
+        trace!("starting fetch of {}", url);
+        let response = req
+            .send()
+            .await
+            .context(format!("sending request to {}", url))?;
+        ensure!(
+            response.status().is_success(),
+            format!("http error on {}", url)
+        );
+        trace!("receiving content on {}", url);
+        let data = response
+            .bytes()
+            .await
+            .context(format!("receiving content on {}", url))?;
+        trace!("done retrieving {}", url);
+        Ok(data)
+    }
+}
+
+#[async_trait]
+trait TextFetcher {
+    async fn fetch_text(&self, url: String) -> Result<String>;
+}
+
+#[async_trait]
+impl<T: BytesFetcher + Sync> TextFetcher for T {
+    async fn fetch_text(&self, url: String) -> Result<String> {
+        Ok(from_utf8(&self.fetch_bytes(url, None).await?)?.to_string())
+    }
+}
 
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s.is_empty() {
@@ -122,34 +166,17 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     let patch_base = format!("http://us.patch.battle.net:1119/{}", patch_suffix);
     let client = &reqwest::Client::new();
     let fetch_throttle = &tokio::sync::Semaphore::new(5);
-    let fetch = |req: Request| async move {
+    let fetch = |url, range| async move {
         let _ = fetch_throttle.acquire().await?;
-        let url = req.url().to_string();
-        trace!("starting fetch of {}", url);
-        let response = client
-            .execute(req)
-            .await
-            .context(format!("sending request to {}", url))?;
-        ensure!(
-            response.status().is_success(),
-            format!("http error on {}", url)
-        );
-        trace!("receiving content on {}", url);
-        let data = response
-            .bytes()
-            .await
-            .context(format!("receiving content on {}", url))?;
-        trace!("done retrieving {}", url);
-        Ok(data)
+        client.fetch_bytes(url, range).await
     };
     let (versions, cdns) = futures::future::try_join(
-        fetch(client.get(format!("{}/versions", patch_base)).build()?),
-        fetch(client.get(format!("{}/cdns", patch_base)).build()?),
+        client.fetch_text(format!("{}/versions", patch_base)),
+        client.fetch_text(format!("{}/cdns", patch_base)),
     )
     .await?;
     let (build_config, cdn_config) = {
-        let info = from_utf8(&*versions)?;
-        let version = parse_info(info)
+        let version = parse_info(&versions)
             .into_iter()
             .find(|m| m.get("Region") == Some(&"us"))
             .context("missing us version")?;
@@ -166,8 +193,7 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         (build, cdn)
     };
     let cdn_prefixes: &Vec<String> = &{
-        let info = from_utf8(&*cdns)?;
-        let cdn = parse_info(info)
+        let cdn = parse_info(&cdns)
             .into_iter()
             .find(|m| m.get("Name") == Some(&"us"))
             .context("missing us cdn")?;
@@ -190,11 +216,8 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         );
         trace!("cdn fetch {}", path);
         for cdn_prefix in cdn_prefixes {
-            let mut req = client.get(format!("{}/{}", cdn_prefix, path));
-            if let Some((start, end)) = range {
-                req = req.header("Range", format!("bytes={}-{}", start, end));
-            }
-            if let Ok(data) = fetch(req.build()?).await {
+            let url = format!("{}/{}", cdn_prefix, path);
+            if let Ok(data) = fetch(url, range).await {
                 return Ok(data);
             }
         }
