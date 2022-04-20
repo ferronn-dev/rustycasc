@@ -103,6 +103,50 @@ impl<T: TextFetcher + Sync> PatchDataFetcher for T {
     }
 }
 
+trait HasCdnPrefixes {
+    fn cdn_prefixes(&self) -> &Vec<String>;
+}
+
+#[async_trait]
+trait CdnBytesFetcher {
+    async fn fetch_cdn_bytes(
+        &self,
+        tag: &str,
+        hash: u128,
+        suffix: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> Result<Bytes>;
+}
+
+#[async_trait]
+impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
+    async fn fetch_cdn_bytes(
+        &self,
+        tag: &str,
+        hash: u128,
+        suffix: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> Result<Bytes> {
+        let h = format!("{:032x}", hash);
+        let path = format!(
+            "{}/{}/{}/{}{}",
+            tag,
+            &h[0..2],
+            &h[2..4],
+            h,
+            suffix.unwrap_or("")
+        );
+        trace!("cdn fetch {}", path);
+        for cdn_prefix in self.cdn_prefixes() {
+            let url = format!("{}/{}", cdn_prefix, path);
+            if let Ok(data) = self.fetch_bytes(url, range).await {
+                return Ok(data);
+            }
+        }
+        bail!("fetch failed on all hosts: {}", path)
+    }
+}
+
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s.is_empty() {
         // Empty string special case because lines() returns an empty iterator.
@@ -208,39 +252,39 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         (Product::Retail, InstanceType::Live) => "wow",
         (Product::Retail, InstanceType::Ptr) => "wowt",
     };
-    let client = &reqwest::Client::new();
+    let client = reqwest::Client::new();
     let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
         client.fetch_version(patch_suffix),
         client.fetch_cdns(patch_suffix),
     )
     .await?;
-    let fetch_throttle = &tokio::sync::Semaphore::new(5);
-    let fetch = |url, range| async move {
-        let _ = fetch_throttle.acquire().await?;
-        client.fetch_bytes(url, range).await
+    struct CdnClient {
+        client: reqwest::Client,
+        cdn_prefixes: Vec<String>,
+        throttle: tokio::sync::Semaphore,
+    }
+    #[async_trait]
+    impl BytesFetcher for CdnClient {
+        async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
+            let _ = self.throttle.acquire().await?;
+            self.client.fetch_bytes(url, range).await
+        }
+    }
+    impl HasCdnPrefixes for CdnClient {
+        fn cdn_prefixes(&self) -> &Vec<String> {
+            &self.cdn_prefixes
+        }
+    }
+    let cdn_client = &CdnClient {
+        client,
+        cdn_prefixes,
+        throttle: tokio::sync::Semaphore::new(5),
     };
-    let cdn_prefixes = &cdn_prefixes;
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
                         range: Option<(usize, usize)>| async move {
-        let h = format!("{:032x}", hash);
-        let path = format!(
-            "{}/{}/{}/{}{}",
-            tag,
-            &h[0..2],
-            &h[2..4],
-            h,
-            suffix.unwrap_or("")
-        );
-        trace!("cdn fetch {}", path);
-        for cdn_prefix in cdn_prefixes {
-            let url = format!("{}/{}", cdn_prefix, path);
-            if let Ok(data) = fetch(url, range).await {
-                return Ok(data);
-            }
-        }
-        bail!("fetch failed on all hosts: {}", path)
+        cdn_client.fetch_cdn_bytes(tag, hash, suffix, range).await
     };
     let cdn_fetch =
         |tag: &'static str, hash: u128| async move { do_cdn_fetch(tag, hash, None, None).await };
