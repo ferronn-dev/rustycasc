@@ -343,7 +343,10 @@ fn ensuredir(dir: &str) -> Result<()> {
     match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
         Some(true) => Ok(()),
         Some(false) => bail!("{} is not a directory", dir),
-        None => std::fs::create_dir(dir).context(format!("error creating {}", dir)),
+        None => {
+            trace!("creating directory {}", dir);
+            std::fs::create_dir(dir).context(format!("error creating {}", dir))
+        }
     }
 }
 
