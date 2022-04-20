@@ -339,6 +339,22 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
     .context("zip writing")
 }
 
+fn ensuredir(dir: &str) -> Result<()> {
+    match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
+        Some(true) => Ok(()),
+        Some(false) => bail!("{} is not a directory", dir),
+        None => std::fs::create_dir(dir).context(format!("error creating {}", dir)),
+    }
+}
+
+async fn builddb() -> Result<()> {
+    ensuredir("cascdb")?;
+    ensuredir("cascdb/archive")?;
+    ensuredir("cascdb/content")?;
+    ensuredir("cascdb/index")?;
+    Ok(())
+}
+
 #[derive(clap::Parser)]
 #[clap(version, about)]
 struct Cli {
@@ -375,16 +391,10 @@ async fn main() -> Result<()> {
         .module(module_path!())
         .verbosity(cli.verbose)
         .init()?;
-    for dir in ["zips"] {
-        match std::fs::metadata(dir).map_or(None, |m| Some(m.is_dir())) {
-            Some(true) => (),
-            Some(false) => bail!("{} is not a directory", dir),
-            None => std::fs::create_dir(dir)?,
-        }
-    }
     match &cli.command {
-        CliCommands::Database(_) => Ok(()),
+        CliCommands::Database(_) => builddb().await,
         CliCommands::FrameXml(args) => {
+            ensuredir("zips")?;
             process(
                 args.product,
                 if args.ptr {
