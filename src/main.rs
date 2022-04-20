@@ -441,6 +441,54 @@ async fn builddb() -> Result<()> {
     ensuredir("cascdb/archive")?;
     ensuredir("cascdb/content")?;
     ensuredir("cascdb/index")?;
+    let client = reqwest::Client::new();
+    let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
+        client.fetch_version("wow_classic_era"),
+        client.fetch_cdns("wow_classic_era"),
+    )
+    .await?;
+    struct CdnClient {
+        client: reqwest::Client,
+        cdn_prefixes: Vec<String>,
+    }
+    #[async_trait]
+    impl BytesFetcher for CdnClient {
+        async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
+            self.client.fetch_bytes(url, range).await
+        }
+    }
+    impl HasCdnPrefixes for CdnClient {
+        fn cdn_prefixes(&self) -> &Vec<String> {
+            &self.cdn_prefixes
+        }
+    }
+    let client = &CdnClient {
+        client,
+        cdn_prefixes,
+    };
+    futures::future::try_join(
+        async {
+            tokio::fs::write(
+                "build.txt",
+                client
+                    .fetch_cdn_bytes("config", build_config, None, None)
+                    .await?,
+            )
+            .await
+            .context("writing build.txt")
+        },
+        async {
+            tokio::fs::write(
+                "cdn.txt",
+                client
+                    .fetch_cdn_bytes("config", cdn_config, None, None)
+                    .await?,
+            )
+            .await
+            .context("writing cdn.txt")
+        },
+    )
+    .await?;
     Ok(())
 }
 
