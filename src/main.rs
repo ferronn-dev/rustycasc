@@ -58,6 +58,51 @@ impl<T: BytesFetcher + Sync> TextFetcher for T {
     }
 }
 
+#[async_trait]
+trait PatchDataFetcher {
+    async fn fetch_version(&self, suffix: &str) -> Result<(u128, u128)>;
+    async fn fetch_cdns(&self, suffix: &str) -> Result<Vec<String>>;
+}
+
+#[async_trait]
+impl<T: TextFetcher + Sync> PatchDataFetcher for T {
+    async fn fetch_version(&self, suffix: &str) -> Result<(u128, u128)> {
+        let info = self
+            .fetch_text(format!(
+                "http://us.patch.battle.net:1119/{}/versions",
+                suffix
+            ))
+            .await?;
+        let version = parse_info(&info)
+            .into_iter()
+            .find(|m| m.get("Region") == Some(&"us"))
+            .context("missing us version")?;
+        let build = parse_hash(
+            version
+                .get("BuildConfig")
+                .context("missing us build config version")?,
+        )?;
+        let cdn = parse_hash(
+            version
+                .get("CDNConfig")
+                .context("missing us cdn config version")?,
+        )?;
+        Ok((build, cdn))
+    }
+    async fn fetch_cdns(&self, suffix: &str) -> Result<Vec<String>> {
+        let info = self
+            .fetch_text(format!("http://us.patch.battle.net:1119/{}/cdns", suffix))
+            .await?;
+        let cdn = parse_info(&info)
+            .into_iter()
+            .find(|m| m.get("Name") == Some(&"us"))
+            .context("missing us cdn")?;
+        let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(' ');
+        let path = cdn.get("Path").context("missing us cdn path")?;
+        Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
+    }
+}
+
 fn parse_info(s: &str) -> Vec<HashMap<&str, &str>> {
     if s.is_empty() {
         // Empty string special case because lines() returns an empty iterator.
@@ -163,44 +208,18 @@ async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
         (Product::Retail, InstanceType::Live) => "wow",
         (Product::Retail, InstanceType::Ptr) => "wowt",
     };
-    let patch_base = format!("http://us.patch.battle.net:1119/{}", patch_suffix);
     let client = &reqwest::Client::new();
+    let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
+        client.fetch_version(patch_suffix),
+        client.fetch_cdns(patch_suffix),
+    )
+    .await?;
     let fetch_throttle = &tokio::sync::Semaphore::new(5);
     let fetch = |url, range| async move {
         let _ = fetch_throttle.acquire().await?;
         client.fetch_bytes(url, range).await
     };
-    let (versions, cdns) = futures::future::try_join(
-        client.fetch_text(format!("{}/versions", patch_base)),
-        client.fetch_text(format!("{}/cdns", patch_base)),
-    )
-    .await?;
-    let (build_config, cdn_config) = {
-        let version = parse_info(&versions)
-            .into_iter()
-            .find(|m| m.get("Region") == Some(&"us"))
-            .context("missing us version")?;
-        let build = parse_hash(
-            version
-                .get("BuildConfig")
-                .context("missing us build config version")?,
-        )?;
-        let cdn = parse_hash(
-            version
-                .get("CDNConfig")
-                .context("missing us cdn config version")?,
-        )?;
-        (build, cdn)
-    };
-    let cdn_prefixes: &Vec<String> = &{
-        let cdn = parse_info(&cdns)
-            .into_iter()
-            .find(|m| m.get("Name") == Some(&"us"))
-            .context("missing us cdn")?;
-        let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(' ');
-        let path = cdn.get("Path").context("missing us cdn path")?;
-        hosts.map(|s| format!("http://{}/{}", s, path)).collect()
-    };
+    let cdn_prefixes = &cdn_prefixes;
     let do_cdn_fetch = |tag: &'static str,
                         hash: u128,
                         suffix: Option<&'static str>,
