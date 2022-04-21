@@ -610,13 +610,34 @@ async fn checkdb() -> Result<()> {
                             "{:?} has the wrong second two digits",
                             e3.path()
                         );
-                        if dir == "cascdb/config" {
-                            let bytes = std::fs::read(e3.path())?;
-                            ensure!(
-                                parse_hash(&s3)? == util::md5hash(&bytes),
-                                "{:?} is not named after its checksum",
-                                e3.path()
-                            );
+                        match dir {
+                            "cascdb/config" => {
+                                let bytes = std::fs::read(e3.path())?;
+                                ensure!(
+                                    parse_hash(&s3)? == util::md5hash(&bytes),
+                                    "{:?} is not named after its checksum",
+                                    e3.path()
+                                );
+                                from_utf8(&bytes).with_context(|| format!("{:?}", e3.path()))?;
+                            }
+                            "cascdb/encoding" => {
+                                // TODO check filename
+                                encoding::parse(&blte::parse(&std::fs::read(e3.path())?)?)
+                                    .with_context(|| format!("{:?}", e3.path()))?;
+                            }
+                            "cascdb/index" => {
+                                archive::parse_index(
+                                    ArchiveKey(parse_hash(&s3)?),
+                                    &std::fs::read(e3.path())?,
+                                )
+                                .with_context(|| format!("{:?}", e3.path()))?;
+                            }
+                            "cascdb/root" => {
+                                // TODO check filename
+                                root::parse(&blte::parse(&std::fs::read(e3.path())?)?)
+                                    .with_context(|| format!("{:?}", e3.path()))?;
+                            }
+                            _ => {}
                         }
                     }
                 }
