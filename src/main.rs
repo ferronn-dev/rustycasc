@@ -544,6 +544,14 @@ async fn builddb(slug: &str) -> Result<()> {
     Ok(())
 }
 
+async fn checkdb() -> Result<()> {
+    ensure!(std::fs::metadata("cascdb")?.is_dir());
+    ensure!(std::fs::metadata("cascdb/archive")?.is_dir());
+    ensure!(std::fs::metadata("cascdb/config")?.is_dir());
+    ensure!(std::fs::metadata("cascdb/index")?.is_dir());
+    Ok(())
+}
+
 #[derive(clap::Parser)]
 #[clap(version, about)]
 struct Cli {
@@ -605,7 +613,7 @@ async fn main() -> Result<()> {
         .init()?;
     match &cli.command {
         CliCommands::Database(args) => match &args.command {
-            CliDatabaseCommands::Check(_) => Ok(()),
+            CliDatabaseCommands::Check(_) => checkdb().await,
             CliDatabaseCommands::Fetch(args) => builddb(product_slug(args.product, args.ptr)).await,
         },
         CliCommands::FrameXml(args) => {
