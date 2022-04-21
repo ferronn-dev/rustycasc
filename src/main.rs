@@ -8,7 +8,7 @@ mod wdc3;
 
 use crate::encoding::Encoding;
 use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::FutureExt;
@@ -566,11 +566,65 @@ async fn builddb(slug: &str) -> Result<()> {
 
 async fn checkdb() -> Result<()> {
     ensure!(std::fs::metadata("cascdb")?.is_dir());
-    ensure!(std::fs::metadata("cascdb/archive")?.is_dir());
-    ensure!(std::fs::metadata("cascdb/config")?.is_dir());
-    ensure!(std::fs::metadata("cascdb/encoding")?.is_dir());
-    ensure!(std::fs::metadata("cascdb/index")?.is_dir());
-    ensure!(std::fs::metadata("cascdb/root")?.is_dir());
+
+    struct Checker {
+        re: regex::Regex,
+    }
+    impl Checker {
+        fn valid_filenames(&self, dir: &str) -> Result<()> {
+            let ename = |e: &std::fs::DirEntry| -> Result<String> {
+                e.file_name()
+                    .into_string()
+                    .map_err(|_| anyhow!("invalid filename"))
+            };
+            for e1 in std::fs::read_dir(dir)? {
+                let e1 = e1?;
+                ensure!(
+                    e1.file_type()?.is_dir(),
+                    "{:?} is not a directory",
+                    e1.path()
+                );
+                let s1 = ename(&e1)?;
+                ensure!(self.re.is_match(&s1), "{:?} is not 2-digit hex", e1.path());
+                for e2 in std::fs::read_dir(e1.path())? {
+                    let e2 = e2?;
+                    ensure!(
+                        e2.file_type()?.is_dir(),
+                        "{:?} is not a directory",
+                        e2.path()
+                    );
+                    let s2 = ename(&e2)?;
+                    ensure!(self.re.is_match(&s2), "{:?} is not 2-digit hex", e2.path());
+                    for e3 in std::fs::read_dir(e2.path())? {
+                        let e3 = e3?;
+                        ensure!(e3.file_type()?.is_file(), "{:?} is not a file", e3.path());
+                        let s3 = ename(&e3)?;
+                        ensure!(s3.len() == 32, "{:?} is not 32-digit hex", e3.path());
+                        ensure!(
+                            s3[0..2] == s1,
+                            "{:?} has the wrong first two digits",
+                            e3.path()
+                        );
+                        ensure!(
+                            s3[2..4] == s2,
+                            "{:?} has the wrong second two digits",
+                            e3.path()
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+    let checker = Checker {
+        re: regex::Regex::new("^[0-9a-f]{2}$")?,
+    };
+
+    checker.valid_filenames("cascdb/archive")?;
+    checker.valid_filenames("cascdb/config")?;
+    checker.valid_filenames("cascdb/encoding")?;
+    checker.valid_filenames("cascdb/index")?;
+    checker.valid_filenames("cascdb/root")?;
     Ok(())
 }
 
