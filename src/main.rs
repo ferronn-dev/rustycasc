@@ -442,6 +442,7 @@ async fn builddb(slug: &str) -> Result<()> {
     ensuredir("cascdb")?;
     ensuredir("cascdb/archive")?;
     ensuredir("cascdb/config")?;
+    ensuredir("cascdb/encoding")?;
     ensuredir("cascdb/index")?;
     let client = reqwest::Client::new();
     let ((build_config, cdn_config), cdn_prefixes) =
@@ -532,11 +533,20 @@ async fn builddb(slug: &str) -> Result<()> {
         cdn_prefixes,
         throttle: tokio::sync::Semaphore::new(5),
     };
-    let (_, archive_keys) = futures::future::try_join(
+    let (
+        BuildConfig {
+            encoding: EncodingKey(encoding),
+            ..
+        },
+        archive_keys,
+    ) = futures::future::try_join(
         client.fetch_build_config(build_config),
         client.fetch_cdn_config(cdn_config),
     )
     .await?;
+    client
+        .fetch_cdn_or_file("data", encoding, None, "encoding")
+        .await?;
     for k in archive_keys {
         client.fetch_archive_index(k).await?;
         client.fetch_archive(k).await?;
@@ -548,6 +558,7 @@ async fn checkdb() -> Result<()> {
     ensure!(std::fs::metadata("cascdb")?.is_dir());
     ensure!(std::fs::metadata("cascdb/archive")?.is_dir());
     ensure!(std::fs::metadata("cascdb/config")?.is_dir());
+    ensure!(std::fs::metadata("cascdb/encoding")?.is_dir());
     ensure!(std::fs::metadata("cascdb/index")?.is_dir());
     Ok(())
 }
