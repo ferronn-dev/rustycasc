@@ -467,6 +467,12 @@ async fn builddb() -> Result<()> {
             &self.cdn_prefixes
         }
     }
+    async fn read_file(tag: &str, hash: u128) -> Result<Bytes> {
+        let h = format!("{:032x}", hash);
+        Ok(Bytes::from(
+            tokio::fs::read(format!("cascdb/{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h)).await?,
+        ))
+    }
     async fn write_file(tag: &str, hash: u128, bytes: &Bytes) -> Result<()> {
         let h = format!("{:032x}", hash);
         ensuredir(&format!("cascdb/{}/{}", tag, &h[0..2]))?;
@@ -479,10 +485,27 @@ async fn builddb() -> Result<()> {
         .context(format!("writing file for {} {}", tag, h))
     }
     impl CdnClient {
+        async fn fetch_cdn_or_file(
+            &self,
+            cdn_tag: &str,
+            hash: u128,
+            suffix: Option<&str>,
+            local_tag: &str,
+        ) -> Result<Bytes> {
+            if let Ok(bytes) = read_file(local_tag, hash).await {
+                trace!("retrieved {} {:032x} from cascdb", local_tag, hash);
+                return Ok(bytes);
+            }
+            trace!("fetching {} {:032x} from cdn", local_tag, hash);
+            let bytes = self.fetch_cdn_bytes(cdn_tag, hash, suffix, None).await?;
+            write_file(local_tag, hash, &bytes).await?;
+            Ok(bytes)
+        }
         async fn fetch_config(&self, hash: u128) -> Result<String> {
-            let bytes = self.fetch_cdn_bytes("config", hash, None, None).await?;
+            let bytes = self
+                .fetch_cdn_or_file("config", hash, None, "config")
+                .await?;
             ensure!(hash == util::md5hash(&bytes));
-            write_file("config", hash, &bytes).await?;
             Ok(from_utf8(&bytes)?.to_string())
         }
         async fn fetch_build_config(&self, hash: u128) -> Result<BuildConfig> {
@@ -497,17 +520,15 @@ async fn builddb() -> Result<()> {
                 .collect()
         }
         async fn fetch_archive_index(&self, hash: u128) -> Result<archive::Index> {
-            let bytes = self
-                .fetch_cdn_bytes("data", hash, Some(".index"), None)
-                .await?;
-            let index = archive::parse_index(ArchiveKey(hash), &bytes)?;
-            write_file("index", hash, &bytes).await?;
-            Ok(index)
+            archive::parse_index(
+                ArchiveKey(hash),
+                &self
+                    .fetch_cdn_or_file("data", hash, Some(".index"), "index")
+                    .await?,
+            )
         }
         async fn fetch_archive(&self, hash: u128) -> Result<Bytes> {
-            let bytes = self.fetch_cdn_bytes("data", hash, None, None).await?;
-            write_file("archive", hash, &bytes).await?;
-            Ok(bytes)
+            self.fetch_cdn_or_file("data", hash, None, "archive").await
         }
     }
     let client = &CdnClient {
