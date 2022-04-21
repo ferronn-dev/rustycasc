@@ -11,7 +11,7 @@ use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::FutureExt;
-use log::trace;
+use log::{trace, warn};
 use std::collections::HashMap;
 use std::str::from_utf8;
 
@@ -140,8 +140,9 @@ impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
         for _ in 1..10 {
             for cdn_prefix in self.cdn_prefixes() {
                 let url = format!("{}/{}", cdn_prefix, path);
-                if let Ok(data) = self.fetch_bytes(url, range).await {
-                    return Ok(data);
+                match self.fetch_bytes(url, range).await {
+                    Ok(data) => return Ok(data),
+                    Err(msg) => warn!("fetch failed: {:#?}", msg),
                 }
             }
         }
