@@ -540,7 +540,24 @@ enum CliCommands {
 }
 
 #[derive(clap::Args)]
-struct CliDatabaseArgs {}
+struct CliDatabaseArgs {
+    #[clap(subcommand)]
+    command: CliDatabaseCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum CliDatabaseCommands {
+    #[clap(name = "check")]
+    Check(CliDatabaseCheckArgs),
+    #[clap(name = "fetch")]
+    Fetch(CliDatabaseFetchArgs),
+}
+
+#[derive(clap::Args)]
+struct CliDatabaseCheckArgs {}
+
+#[derive(clap::Args)]
+struct CliDatabaseFetchArgs {}
 
 #[derive(clap::Args)]
 struct CliFrameXmlArgs {
@@ -559,7 +576,10 @@ async fn main() -> Result<()> {
         .verbosity(cli.verbose)
         .init()?;
     match &cli.command {
-        CliCommands::Database(_) => builddb().await,
+        CliCommands::Database(args) => match &args.command {
+            CliDatabaseCommands::Check(_) => Ok(()),
+            CliDatabaseCommands::Fetch(_) => builddb().await,
+        },
         CliCommands::FrameXml(args) => {
             ensuredir("zips")?;
             process(
