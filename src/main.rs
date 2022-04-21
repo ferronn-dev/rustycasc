@@ -6,6 +6,7 @@ mod types;
 mod util;
 mod wdc3;
 
+use crate::encoding::Encoding;
 use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
 use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
@@ -527,6 +528,13 @@ async fn builddb(slug: &str) -> Result<()> {
         async fn fetch_archive(&self, hash: u128) -> Result<Bytes> {
             self.fetch_cdn_or_file("data", hash, None, "archive").await
         }
+        async fn fetch_encoding(&self, hash: u128) -> Result<Encoding> {
+            encoding::parse(&blte::parse(
+                &self
+                    .fetch_cdn_or_file("data", hash, None, "encoding")
+                    .await?,
+            )?)
+        }
     }
     let client = &CdnClient {
         client,
@@ -535,7 +543,7 @@ async fn builddb(slug: &str) -> Result<()> {
     };
     let (
         BuildConfig {
-            encoding: EncodingKey(encoding),
+            encoding: EncodingKey(encoding_hash),
             ..
         },
         archive_keys,
@@ -544,9 +552,7 @@ async fn builddb(slug: &str) -> Result<()> {
         client.fetch_cdn_config(cdn_config),
     )
     .await?;
-    client
-        .fetch_cdn_or_file("data", encoding, None, "encoding")
-        .await?;
+    client.fetch_encoding(encoding_hash).await?;
     for k in archive_keys {
         client.fetch_archive_index(k).await?;
         client.fetch_archive(k).await?;
