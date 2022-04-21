@@ -600,6 +600,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     stderrlog::new()
         .module(module_path!())
+        .timestamp(stderrlog::Timestamp::Millisecond)
         .verbosity(cli.verbose)
         .init()?;
     match &cli.command {
