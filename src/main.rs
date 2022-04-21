@@ -451,10 +451,12 @@ async fn builddb() -> Result<()> {
     struct CdnClient {
         client: reqwest::Client,
         cdn_prefixes: Vec<String>,
+        throttle: tokio::sync::Semaphore,
     }
     #[async_trait]
     impl BytesFetcher for CdnClient {
         async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
+            let _ = self.throttle.acquire().await?;
             self.client.fetch_bytes(url, range).await
         }
     }
@@ -507,6 +509,7 @@ async fn builddb() -> Result<()> {
     let client = &CdnClient {
         client,
         cdn_prefixes,
+        throttle: tokio::sync::Semaphore::new(5),
     };
     let (_, archive_keys) = futures::future::try_join(
         client.fetch_build_config(build_config),
