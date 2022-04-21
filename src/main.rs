@@ -236,25 +236,24 @@ enum Product {
     Retail,
 }
 
-enum InstanceType {
-    Live,
-    Ptr,
+fn product_slug(product: Product, ptr: bool) -> &'static str {
+    match (product, ptr) {
+        (Product::Vanilla, false) => "wow_classic_era",
+        (Product::Vanilla, true) => "wow_classic_era_ptr",
+        (Product::TBC, false) => "wow_classic",
+        (Product::TBC, true) => "wow_classic_ptr",
+        (Product::Retail, false) => "wow",
+        (Product::Retail, true) => "wowt",
+    }
 }
 
-async fn process(product: Product, instance_type: InstanceType) -> Result<()> {
+async fn process(product: Product, ptr: bool) -> Result<()> {
     let product_suffix = match &product {
         Product::Vanilla => "Vanilla",
         Product::TBC => "TBC",
         Product::Retail => "Mainline",
     };
-    let patch_suffix = match (product, instance_type) {
-        (Product::Vanilla, InstanceType::Live) => "wow_classic_era",
-        (Product::Vanilla, InstanceType::Ptr) => "wow_classic_era_ptr",
-        (Product::TBC, InstanceType::Live) => "wow_classic",
-        (Product::TBC, InstanceType::Ptr) => "wow_classic_ptr",
-        (Product::Retail, InstanceType::Live) => "wow",
-        (Product::Retail, InstanceType::Ptr) => "wowt",
-    };
+    let patch_suffix = product_slug(product, ptr);
     let client = reqwest::Client::new();
     let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
         client.fetch_version(patch_suffix),
@@ -439,17 +438,14 @@ fn ensuredir(dir: &str) -> Result<()> {
     }
 }
 
-async fn builddb() -> Result<()> {
+async fn builddb(slug: &str) -> Result<()> {
     ensuredir("cascdb")?;
     ensuredir("cascdb/archive")?;
     ensuredir("cascdb/config")?;
     ensuredir("cascdb/index")?;
     let client = reqwest::Client::new();
-    let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
-        client.fetch_version("wow_classic_era"),
-        client.fetch_cdns("wow_classic_era"),
-    )
-    .await?;
+    let ((build_config, cdn_config), cdn_prefixes) =
+        futures::future::try_join(client.fetch_version(slug), client.fetch_cdns(slug)).await?;
     struct CdnClient {
         client: reqwest::Client,
         cdn_prefixes: Vec<String>,
@@ -583,7 +579,12 @@ enum CliDatabaseCommands {
 struct CliDatabaseCheckArgs {}
 
 #[derive(clap::Args)]
-struct CliDatabaseFetchArgs {}
+struct CliDatabaseFetchArgs {
+    #[clap(short, long, arg_enum, ignore_case(true))]
+    product: Product,
+    #[clap(long)]
+    ptr: bool,
+}
 
 #[derive(clap::Args)]
 struct CliFrameXmlArgs {
@@ -604,19 +605,11 @@ async fn main() -> Result<()> {
     match &cli.command {
         CliCommands::Database(args) => match &args.command {
             CliDatabaseCommands::Check(_) => Ok(()),
-            CliDatabaseCommands::Fetch(_) => builddb().await,
+            CliDatabaseCommands::Fetch(args) => builddb(product_slug(args.product, args.ptr)).await,
         },
         CliCommands::FrameXml(args) => {
             ensuredir("zips")?;
-            process(
-                args.product,
-                if args.ptr {
-                    InstanceType::Ptr
-                } else {
-                    InstanceType::Live
-                },
-            )
-            .await
+            process(args.product, args.ptr).await
         }
     }
 }
