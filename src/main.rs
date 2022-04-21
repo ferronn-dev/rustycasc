@@ -439,6 +439,7 @@ fn ensuredir(dir: &str) -> Result<()> {
 async fn builddb() -> Result<()> {
     ensuredir("cascdb")?;
     ensuredir("cascdb/config")?;
+    ensuredir("cascdb/index")?;
     let client = reqwest::Client::new();
     let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
         client.fetch_version("wow_classic_era"),
@@ -485,14 +486,35 @@ async fn builddb() -> Result<()> {
                 .map(parse_hash)
                 .collect()
         }
+        async fn fetch_archive_index(&self, hash: u128) -> Result<archive::Index> {
+            let h = format!("{:032x}", hash);
+            let bytes = self
+                .fetch_cdn_bytes("data", hash, Some(".index"), None)
+                .await?;
+            let index = archive::parse_index(ArchiveKey(hash), &bytes)?;
+            ensuredir(&format!("cascdb/index/{}", &h[0..2]))?;
+            ensuredir(&format!("cascdb/index/{}/{}", &h[0..2], &h[2..4]))?;
+            tokio::fs::write(
+                format!("cascdb/index/{}/{}/{}", &h[0..2], &h[2..4], h),
+                &bytes,
+            )
+            .await?;
+            Ok(index)
+        }
     }
     let client = &CdnClient {
         client,
         cdn_prefixes,
     };
-    futures::future::try_join(
+    let (_, archive_keys) = futures::future::try_join(
         client.fetch_build_config(build_config),
         client.fetch_cdn_config(cdn_config),
+    )
+    .await?;
+    futures::future::try_join_all(
+        archive_keys
+            .into_iter()
+            .map(|k| client.fetch_archive_index(k)),
     )
     .await?;
     Ok(())
