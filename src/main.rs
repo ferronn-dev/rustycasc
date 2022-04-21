@@ -461,7 +461,7 @@ async fn builddb() -> Result<()> {
         }
     }
     impl CdnClient {
-        async fn fetch_config_bytes(&self, hash: u128) -> Result<Bytes> {
+        async fn fetch_config(&self, hash: u128) -> Result<String> {
             let h = format!("{:032x}", hash);
             let bytes = self.fetch_cdn_bytes("config", hash, None, None).await?;
             ensure!(hash == util::md5hash(&bytes));
@@ -472,7 +472,18 @@ async fn builddb() -> Result<()> {
                 &bytes,
             )
             .await?;
-            Ok(bytes)
+            Ok(from_utf8(&bytes)?.to_string())
+        }
+        async fn fetch_build_config(&self, hash: u128) -> Result<BuildConfig> {
+            parse_build_config(&parse_config(&self.fetch_config(hash).await?))
+        }
+        async fn fetch_cdn_config(&self, hash: u128) -> Result<Vec<u128>> {
+            parse_config(&self.fetch_config(hash).await?)
+                .get("archives")
+                .context("missing archives in cdninfo")?
+                .split(' ')
+                .map(parse_hash)
+                .collect()
         }
     }
     let client = &CdnClient {
@@ -480,8 +491,8 @@ async fn builddb() -> Result<()> {
         cdn_prefixes,
     };
     futures::future::try_join(
-        client.fetch_config_bytes(build_config),
-        client.fetch_config_bytes(cdn_config),
+        client.fetch_build_config(build_config),
+        client.fetch_cdn_config(cdn_config),
     )
     .await?;
     Ok(())
