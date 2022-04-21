@@ -610,6 +610,14 @@ async fn checkdb() -> Result<()> {
                             "{:?} has the wrong second two digits",
                             e3.path()
                         );
+                        if dir == "cascdb/config" {
+                            let bytes = std::fs::read(e3.path())?;
+                            ensure!(
+                                parse_hash(&s3)? == util::md5hash(&bytes),
+                                "{:?} is not named after its checksum",
+                                e3.path()
+                            );
+                        }
                     }
                 }
             }
