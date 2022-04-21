@@ -137,10 +137,12 @@ impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
             suffix.unwrap_or("")
         );
         trace!("cdn fetch {}", path);
-        for cdn_prefix in self.cdn_prefixes() {
-            let url = format!("{}/{}", cdn_prefix, path);
-            if let Ok(data) = self.fetch_bytes(url, range).await {
-                return Ok(data);
+        for _ in 1..10 {
+            for cdn_prefix in self.cdn_prefixes() {
+                let url = format!("{}/{}", cdn_prefix, path);
+                if let Ok(data) = self.fetch_bytes(url, range).await {
+                    return Ok(data);
+                }
             }
         }
         bail!("fetch failed on all hosts: {}", path)
