@@ -530,10 +530,10 @@ async fn builddb() -> Result<()> {
         client.fetch_cdn_config(cdn_config),
     )
     .await?;
-    futures::future::try_join_all(archive_keys.into_iter().map(|k| {
-        futures::future::try_join(client.fetch_archive_index(k), client.fetch_archive(k))
-    }))
-    .await?;
+    for k in archive_keys {
+        client.fetch_archive_index(k).await?;
+        client.fetch_archive(k).await?;
+    }
     Ok(())
 }
 
