@@ -467,18 +467,22 @@ async fn builddb() -> Result<()> {
             &self.cdn_prefixes
         }
     }
+    async fn write_file(tag: &str, hash: u128, bytes: &Bytes) -> Result<()> {
+        let h = format!("{:032x}", hash);
+        ensuredir(&format!("cascdb/{}/{}", tag, &h[0..2]))?;
+        ensuredir(&format!("cascdb/{}/{}/{}", tag, &h[0..2], &h[2..4]))?;
+        tokio::fs::write(
+            format!("cascdb/{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h),
+            &bytes,
+        )
+        .await
+        .context(format!("writing file for {} {}", tag, h))
+    }
     impl CdnClient {
         async fn fetch_config(&self, hash: u128) -> Result<String> {
-            let h = format!("{:032x}", hash);
             let bytes = self.fetch_cdn_bytes("config", hash, None, None).await?;
             ensure!(hash == util::md5hash(&bytes));
-            ensuredir(&format!("cascdb/config/{}", &h[0..2]))?;
-            ensuredir(&format!("cascdb/config/{}/{}", &h[0..2], &h[2..4]))?;
-            tokio::fs::write(
-                format!("cascdb/config/{}/{}/{}", &h[0..2], &h[2..4], h),
-                &bytes,
-            )
-            .await?;
+            write_file("config", hash, &bytes).await?;
             Ok(from_utf8(&bytes)?.to_string())
         }
         async fn fetch_build_config(&self, hash: u128) -> Result<BuildConfig> {
@@ -493,30 +497,16 @@ async fn builddb() -> Result<()> {
                 .collect()
         }
         async fn fetch_archive_index(&self, hash: u128) -> Result<archive::Index> {
-            let h = format!("{:032x}", hash);
             let bytes = self
                 .fetch_cdn_bytes("data", hash, Some(".index"), None)
                 .await?;
             let index = archive::parse_index(ArchiveKey(hash), &bytes)?;
-            ensuredir(&format!("cascdb/index/{}", &h[0..2]))?;
-            ensuredir(&format!("cascdb/index/{}/{}", &h[0..2], &h[2..4]))?;
-            tokio::fs::write(
-                format!("cascdb/index/{}/{}/{}", &h[0..2], &h[2..4], h),
-                &bytes,
-            )
-            .await?;
+            write_file("index", hash, &bytes).await?;
             Ok(index)
         }
         async fn fetch_archive(&self, hash: u128) -> Result<Bytes> {
-            let h = format!("{:032x}", hash);
             let bytes = self.fetch_cdn_bytes("data", hash, None, None).await?;
-            ensuredir(&format!("cascdb/archive/{}", &h[0..2]))?;
-            ensuredir(&format!("cascdb/archive/{}/{}", &h[0..2], &h[2..4]))?;
-            tokio::fs::write(
-                format!("cascdb/archive/{}/{}/{}", &h[0..2], &h[2..4], h),
-                &bytes,
-            )
-            .await?;
+            write_file("archive", hash, &bytes).await?;
             Ok(bytes)
         }
     }
