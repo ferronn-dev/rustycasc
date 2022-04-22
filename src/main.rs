@@ -597,6 +597,7 @@ async fn checkdb() -> Result<()> {
                     ensure!(self.re.is_match(&s2), "{:?} is not 2-digit hex", e2.path());
                     for e3 in std::fs::read_dir(e2.path())? {
                         let e3 = e3?;
+                        trace!("checking {:?}", e3.path());
                         ensure!(e3.file_type()?.is_file(), "{:?} is not a file", e3.path());
                         let s3 = ename(&e3)?;
                         ensure!(s3.len() == 32, "{:?} is not 32-digit hex", e3.path());
@@ -610,19 +611,21 @@ async fn checkdb() -> Result<()> {
                             "{:?} has the wrong second two digits",
                             e3.path()
                         );
+                        let h3 = parse_hash(&s3)?;
                         match dir {
                             "cascdb/config" => {
                                 let bytes = std::fs::read(e3.path())?;
                                 ensure!(
-                                    parse_hash(&s3)? == util::md5hash(&bytes),
+                                    h3 == util::md5hash(&bytes),
                                     "{:?} is not named after its checksum",
                                     e3.path()
                                 );
                                 from_utf8(&bytes).with_context(|| format!("{:?}", e3.path()))?;
                             }
                             "cascdb/encoding" => {
-                                // TODO check filename
-                                encoding::parse(&blte::parse(&std::fs::read(e3.path())?)?)
+                                let bytes = std::fs::read(e3.path())?;
+                                ensure!(h3 == blte::checksum(&bytes)?);
+                                encoding::parse(&blte::parse(&bytes)?)
                                     .with_context(|| format!("{:?}", e3.path()))?;
                             }
                             "cascdb/index" => {
@@ -633,8 +636,9 @@ async fn checkdb() -> Result<()> {
                                 .with_context(|| format!("{:?}", e3.path()))?;
                             }
                             "cascdb/root" => {
-                                // TODO check filename
-                                root::parse(&blte::parse(&std::fs::read(e3.path())?)?)
+                                let bytes = std::fs::read(e3.path())?;
+                                ensure!(h3 == blte::checksum(&bytes)?);
+                                root::parse(&blte::parse(&bytes)?)
                                     .with_context(|| format!("{:?}", e3.path()))?;
                             }
                             _ => {}

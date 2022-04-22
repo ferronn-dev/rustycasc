@@ -15,6 +15,19 @@ fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
     })
 }
 
+pub(crate) fn checksum(data: &[u8]) -> Result<u128> {
+    let mut p = data;
+    ensure!(p.remaining() >= 12, "truncated header");
+    ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
+    let header_size: usize = p.get_u32().try_into()?;
+    if header_size == 0 {
+        Ok(util::md5hash(data))
+    } else {
+        ensure!(p.remaining() >= header_size - 8);
+        Ok(util::md5hash(&data[0..header_size]))
+    }
+}
+
 pub(crate) fn parse(data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
     ensure!(p.remaining() >= 12, "truncated header");
