@@ -678,7 +678,7 @@ enum CliCommands {
     #[clap(name = "framexml")]
     FrameXml(CliFrameXmlArgs),
     #[clap(name = "ribbit")]
-    Ribbit,
+    Ribbit(CliRibbitArgs),
 }
 
 #[derive(clap::Args)]
@@ -714,6 +714,26 @@ struct CliFrameXmlArgs {
     ptr: bool,
 }
 
+#[derive(clap::Args)]
+struct CliRibbitArgs {
+    #[clap(subcommand)]
+    command: CliRibbitCommands,
+}
+
+#[derive(clap::Subcommand)]
+enum CliRibbitCommands {
+    #[clap(name = "summary")]
+    Summary,
+    #[clap(name = "versions")]
+    Versions(CliRibbitVersionsArgs),
+}
+
+#[derive(clap::Args)]
+struct CliRibbitVersionsArgs {
+    #[clap(value_parser)]
+    product: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     use clap::Parser;
@@ -732,10 +752,16 @@ async fn main() -> Result<()> {
             ensuredir("zips")?;
             process(args.product, args.ptr).await
         }
-        CliCommands::Ribbit => {
-            print!("{:#?}", ribbit::Ribbit::new()?.summary()?);
-            Ok(())
-        }
+        CliCommands::Ribbit(args) => match &args.command {
+            CliRibbitCommands::Summary => {
+                print!("{:#?}", ribbit::Ribbit::new()?.summary()?);
+                Ok(())
+            }
+            CliRibbitCommands::Versions(args) => {
+                print!("{:#?}", ribbit::Ribbit::new()?.versions(&args.product)?);
+                Ok(())
+            }
+        },
     }
 }
 
