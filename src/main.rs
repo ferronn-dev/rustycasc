@@ -726,10 +726,18 @@ enum CliRibbitCommands {
     Summary,
     #[clap(name = "versions")]
     Versions(CliRibbitVersionsArgs),
+    #[clap(name = "cdns")]
+    CDNs(CliRibbitCDNsArgs),
 }
 
 #[derive(clap::Args)]
 struct CliRibbitVersionsArgs {
+    #[clap(value_parser)]
+    product: String,
+}
+
+#[derive(clap::Args)]
+struct CliRibbitCDNsArgs {
     #[clap(value_parser)]
     product: String,
 }
@@ -759,6 +767,10 @@ async fn main() -> Result<()> {
             }
             CliRibbitCommands::Versions(args) => {
                 print!("{:#?}", ribbit::Ribbit::new()?.versions(&args.product)?);
+                Ok(())
+            }
+            CliRibbitCommands::CDNs(args) => {
+                print!("{:#?}", ribbit::Ribbit::new()?.cdns(&args.product)?);
                 Ok(())
             }
         },
