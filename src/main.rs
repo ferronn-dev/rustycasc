@@ -733,7 +733,7 @@ async fn main() -> Result<()> {
             process(args.product, args.ptr).await
         }
         CliCommands::Ribbit => {
-            print!("{:?}", ribbit::Ribbit::new()?.summary()?);
+            print!("{:#?}", ribbit::Ribbit::new()?.summary()?);
             Ok(())
         }
     }
