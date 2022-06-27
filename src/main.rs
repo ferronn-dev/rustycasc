@@ -1,6 +1,7 @@
 mod archive;
 mod blte;
 mod encoding;
+mod ribbit;
 mod root;
 mod types;
 mod util;
@@ -676,6 +677,8 @@ enum CliCommands {
     Database(CliDatabaseArgs),
     #[clap(name = "framexml")]
     FrameXml(CliFrameXmlArgs),
+    #[clap(name = "ribbit")]
+    Ribbit,
 }
 
 #[derive(clap::Args)]
@@ -728,6 +731,10 @@ async fn main() -> Result<()> {
         CliCommands::FrameXml(args) => {
             ensuredir("zips")?;
             process(args.product, args.ptr).await
+        }
+        CliCommands::Ribbit => {
+            print!("{:?}", ribbit::Ribbit::new()?.summary()?);
+            Ok(())
         }
     }
 }
