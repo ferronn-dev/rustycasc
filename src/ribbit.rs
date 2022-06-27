@@ -104,27 +104,29 @@ mod parsers {
                 tuple((
                     delimited(tag("## seqn = "), dec32, newline),
                     fold_many0(
-                        tuple((
-                            terminated(is_not("|"), tag("|")),
-                            terminated(hex128, tag("|")),
-                            terminated(hex128, tag("||")),
-                            terminated(dec32, tag("|")),
-                            terminated(is_not("|"), tag("|")),
-                            terminated(hex128, newline),
-                        )),
-                        HashMap::new,
-                        |mut m, (r, bcfg, c, bid, v, p)| {
-                            m.insert(
-                                r.to_owned(),
-                                VersionsEntry {
+                        map_res::<_, _, _, _, anyhow::Error, _, _>(
+                            tuple((
+                                terminated(is_not("|"), tag("|")),
+                                terminated(hex128, tag("|")),
+                                terminated(hex128, tag("||")),
+                                terminated(dec32, tag("|")),
+                                terminated(is_not("|"), tag("|")),
+                                terminated(hex128, newline),
+                            )),
+                            |(r, bcfg, c, bid, v, p)| {
+                                Ok(VersionsEntry {
                                     region: r.to_owned(),
                                     build_config: bcfg,
                                     cdn_config: c,
                                     build_id: bid,
                                     name: v.to_owned(),
                                     product_config: p,
-                                },
-                            );
+                                })
+                            },
+                        ),
+                        HashMap::new,
+                        |mut m, e| {
+                            m.insert(e.region.clone(), e);
                             m
                         },
                     ),
