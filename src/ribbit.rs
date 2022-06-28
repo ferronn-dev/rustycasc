@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Read};
 
 use anyhow::Result;
 
@@ -202,7 +202,11 @@ impl Ribbit {
         stream.write_all(cmd)?;
         stream.write_all(b"\r\n")?;
         stream.flush()?;
-        let nodes = read_multipart(&mut stream, false).context("mime")?;
+        stream.shutdown(std::net::Shutdown::Write)?;
+
+        let mut content = Vec::new();
+        stream.read_to_end(&mut content)?;
+        let nodes = read_multipart(&mut &content[..], false).context("mime")?;
         ensure!(nodes.len() == 2);
         match &nodes[0] {
             Node::Part(Part { body, .. }) => {
