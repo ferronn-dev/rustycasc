@@ -728,6 +728,8 @@ enum CliRibbitCommands {
     Versions(CliRibbitVersionsArgs),
     #[clap(name = "cdns")]
     CDNs(CliRibbitCDNsArgs),
+    #[clap(name = "check")]
+    Check,
 }
 
 #[derive(clap::Args)]
@@ -762,15 +764,30 @@ async fn main() -> Result<()> {
         }
         CliCommands::Ribbit(args) => match &args.command {
             CliRibbitCommands::Summary => {
-                print!("{:#?}", ribbit::Ribbit::new()?.summary()?);
+                println!("{:#?}", ribbit::Ribbit::new()?.summary()?);
                 Ok(())
             }
             CliRibbitCommands::Versions(args) => {
-                print!("{:#?}", ribbit::Ribbit::new()?.versions(&args.product)?);
+                println!("{:#?}", ribbit::Ribbit::new()?.versions(&args.product)?);
                 Ok(())
             }
             CliRibbitCommands::CDNs(args) => {
-                print!("{:#?}", ribbit::Ribbit::new()?.cdns(&args.product)?);
+                println!("{:#?}", ribbit::Ribbit::new()?.cdns(&args.product)?);
+                Ok(())
+            }
+            CliRibbitCommands::Check => {
+                let mut ribbit = ribbit::Ribbit::new()?;
+                let summary = ribbit.summary()?;
+                println!("summary seqn = {}", summary.seqn);
+                for (k, v) in summary.entries {
+                    println!("looking at {}", k);
+                    if v.seqn.is_some() {
+                        println!("{} versions seqn = {}", k, ribbit.versions(&k)?.seqn);
+                    }
+                    if v.cdn.is_some() {
+                        println!("{} cdns seqn = {}", k, ribbit.cdns(&k)?.seqn);
+                    }
+                }
                 Ok(())
             }
         },

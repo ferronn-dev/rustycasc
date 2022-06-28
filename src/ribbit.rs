@@ -4,15 +4,15 @@ use anyhow::Result;
 
 #[derive(Debug, Default, PartialEq)]
 pub struct SummaryEntry {
-    seqn: Option<u32>,
-    cdn: Option<u32>,
-    bgdl: Option<u32>,
+    pub seqn: Option<u32>,
+    pub cdn: Option<u32>,
+    pub bgdl: Option<u32>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Summary {
-    seqn: u32,
-    entries: HashMap<String, SummaryEntry>,
+    pub seqn: u32,
+    pub entries: HashMap<String, SummaryEntry>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,12 +23,12 @@ pub struct VersionsEntry {
     key_config: Option<u128>,
     build_id: u32,
     name: String,
-    product_config: u128,
+    product_config: Option<u128>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Versions {
-    seqn: u32,
+    pub seqn: u32,
     entries: HashMap<String, VersionsEntry>,
 }
 
@@ -43,7 +43,7 @@ pub struct CDNsEntry {
 
 #[derive(Debug, PartialEq)]
 pub struct CDNs {
-    seqn: u32,
+    pub seqn: u32,
     entries: HashMap<String, CDNsEntry>,
 }
 
@@ -125,7 +125,7 @@ mod parsers {
                                 terminated(opt(hex128), tag("|")),
                                 terminated(dec32, tag("|")),
                                 terminated(is_not("|"), tag("|")),
-                                terminated(hex128, newline),
+                                terminated(opt(hex128), newline),
                             )),
                             |(r, bcfg, c, k, bid, v, p)| VersionsEntry {
                                 region: r.to_owned(),
@@ -187,25 +187,22 @@ mod parsers {
     }
 }
 
-pub struct Ribbit {
-    stream: std::net::TcpStream,
-}
+pub struct Ribbit {}
 
 impl Ribbit {
     pub fn new() -> Result<Ribbit> {
-        Ok(Ribbit {
-            stream: std::net::TcpStream::connect("us.version.battle.net:1119")?,
-        })
+        Ok(Ribbit {})
     }
     fn command<T>(&mut self, cmd: &[u8], parser: fn(&str) -> nom::IResult<&str, T>) -> Result<T> {
         use anyhow::{bail, ensure, Context};
         use mime_multipart::{read_multipart, Node, Part};
         use std::io::Write;
 
-        self.stream.write_all(cmd)?;
-        self.stream.write_all(b"\r\n")?;
-        self.stream.flush()?;
-        let nodes = read_multipart(&mut self.stream, false).context("mime")?;
+        let mut stream = std::net::TcpStream::connect("us.version.battle.net:1119")?;
+        stream.write_all(cmd)?;
+        stream.write_all(b"\r\n")?;
+        stream.flush()?;
+        let nodes = read_multipart(&mut stream, false).context("mime")?;
         ensure!(nodes.len() == 2);
         match &nodes[0] {
             Node::Part(Part { body, .. }) => {
