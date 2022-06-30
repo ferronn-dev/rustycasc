@@ -196,6 +196,7 @@ impl Ribbit {
     fn command<T>(&mut self, cmd: &[u8], parser: fn(&str) -> nom::IResult<&str, T>) -> Result<T> {
         use anyhow::{bail, ensure, Context};
         use mime_multipart::{read_multipart, Node, Part};
+        use sha2::Digest;
         use std::io::Write;
 
         let mut stream = std::net::TcpStream::connect("us.version.battle.net:1119")?;
@@ -206,6 +207,15 @@ impl Ribbit {
 
         let mut content = Vec::new();
         stream.read_to_end(&mut content)?;
+
+        let cn = content.len();
+        ensure!(cn > 76);
+        ensure!(&content[cn - 76..cn - 66] == b"Checksum: ");
+        ensure!(
+            &content[cn - 66..cn - 2]
+                == hex::encode(sha2::Sha256::digest(&content[0..cn - 76])).as_bytes()
+        );
+
         let nodes = read_multipart(&mut &content[..], false).context("mime")?;
         ensure!(nodes.len() == 2);
         match &nodes[0] {
