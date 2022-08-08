@@ -10,7 +10,7 @@ license-file = "LICENSE"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.58"
+anyhow = "1.0.60"
 async-trait = "0.1.56"
 bytes = "1.1.0"
 clap = { version = "3.2.8", features = ["derive"] }
