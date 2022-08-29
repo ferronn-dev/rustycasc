@@ -443,7 +443,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f82b0f4c27ad9f8bfd1f3208d882da2b09c301bc1c828fd3a00d0216d2fbbff6"
 dependencies = [
  "crc32fast",
- "miniz_oxide",
+ "miniz_oxide 0.5.3",
 ]
 
 [[package]]
@@ -961,6 +961,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniz_oxide"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "128d8ff01d10c86c446b4514e228ff58237ccc609573dad9997ec288f9f1c4d0"
+dependencies = [
+ "adler",
+]
+
+[[package]]
 name = "mio"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1418,7 +1427,7 @@ dependencies = [
  "log 0.4.17",
  "md5",
  "mime_multipart",
- "miniz_oxide",
+ "miniz_oxide 0.6.1",
  "nom",
  "nom-derive",
  "regex",
