@@ -194,8 +194,7 @@ impl Ribbit {
         Ok(Ribbit {})
     }
     fn command<T>(&mut self, cmd: &[u8], parser: fn(&str) -> nom::IResult<&str, T>) -> Result<T> {
-        use anyhow::{bail, ensure, Context};
-        use mime_multipart::{read_multipart, Node, Part};
+        use anyhow::{ensure, Context};
         use sha2::Digest;
         use std::io::Write;
 
@@ -216,15 +215,16 @@ impl Ribbit {
                 == hex::encode(sha2::Sha256::digest(&content[0..cn - 76])).as_bytes()
         );
 
-        let nodes = read_multipart(&mut &content[..], false).context("mime")?;
-        ensure!(nodes.len() == 2);
-        match &nodes[0] {
-            Node::Part(Part { body, .. }) => {
-                let (_, v) = parser(std::str::from_utf8(body)?).map_err(|e| e.to_owned())?;
-                Ok(v)
-            }
-            _ => bail!("mime"),
-        }
+        let (_, v) = parser(
+            mail_parser::Message::parse(&content)
+                .context("mime parsing")?
+                .get_part(1)
+                .context("mime part")?
+                .get_text_contents()
+                .context("mime text")?,
+        )
+        .map_err(|e| e.to_owned())?;
+        Ok(v)
     }
     pub fn summary(&mut self) -> Result<Summary> {
         self.command(b"v1/summary", parsers::summary)
