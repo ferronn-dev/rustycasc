@@ -231,7 +231,7 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(clap::ArgEnum, Clone, Copy)]
+#[derive(clap::ValueEnum, Clone, Copy)]
 enum Product {
     Vanilla,
     TBC,
@@ -667,8 +667,8 @@ async fn checkdb() -> Result<()> {
 struct Cli {
     #[clap(subcommand)]
     command: CliCommands,
-    #[clap(short, long, parse(from_occurrences))]
-    verbose: usize,
+    #[clap(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 #[derive(clap::Subcommand)]
@@ -700,7 +700,7 @@ struct CliDatabaseCheckArgs {}
 
 #[derive(clap::Args)]
 struct CliDatabaseFetchArgs {
-    #[clap(short, long, arg_enum, ignore_case(true))]
+    #[clap(short, long, ignore_case(true))]
     product: Product,
     #[clap(long)]
     ptr: bool,
@@ -708,7 +708,7 @@ struct CliDatabaseFetchArgs {
 
 #[derive(clap::Args)]
 struct CliFrameXmlArgs {
-    #[clap(short, long, arg_enum, ignore_case(true))]
+    #[clap(short, long, ignore_case(true))]
     product: Product,
     #[clap(long)]
     ptr: bool,
@@ -751,7 +751,7 @@ async fn main() -> Result<()> {
     stderrlog::new()
         .module(module_path!())
         .timestamp(stderrlog::Timestamp::Millisecond)
-        .verbosity(cli.verbose)
+        .verbosity(cli.verbose as usize)
         .init()?;
     match &cli.command {
         CliCommands::Database(args) => match &args.command {
