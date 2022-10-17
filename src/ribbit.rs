@@ -2,20 +2,20 @@ use std::{collections::HashMap, io::Read};
 
 use anyhow::Result;
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub struct SummaryEntry {
     pub seqn: Option<u32>,
     pub cdn: Option<u32>,
     pub bgdl: Option<u32>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Summary {
     pub seqn: u32,
     pub entries: HashMap<String, SummaryEntry>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct VersionsEntry {
     region: String,
     build_config: u128,
@@ -26,13 +26,13 @@ pub struct VersionsEntry {
     product_config: Option<u128>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Versions {
     pub seqn: u32,
     entries: HashMap<String, VersionsEntry>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct CDNsEntry {
     region: String,
     path: String,
@@ -41,7 +41,7 @@ pub struct CDNsEntry {
     config_path: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct CDNs {
     pub seqn: u32,
     entries: HashMap<String, CDNsEntry>,
