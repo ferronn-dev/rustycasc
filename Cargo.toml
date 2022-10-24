@@ -15,7 +15,7 @@ async-trait = "0.1.57"
 bytes = "1.2.1"
 clap = { version = "4.0.15", features = ["derive"] }
 derive_more = { version = "0.99.17", features = ["display"] }
-futures = "0.3.24"
+futures = "0.3.25"
 hashers = "1.0.1"
 hex = "0.4.3"
 indicatif = "0.17.1"
