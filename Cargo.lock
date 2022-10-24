@@ -819,12 +819,11 @@ dependencies = [
 
 [[package]]
 name = "mail-parser"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e9485878d4e73f3f3e45fe60d06ce658ef5891ee6de58b354da3ef4bd4826d8"
+checksum = "f9c5c7e7ee68a597425d5e4134dfa0dbbc1f86cc047c9a8c1dde1bf34fafe461"
 dependencies = [
  "encoding_rs",
- "serde",
 ]
 
 [[package]]
@@ -1306,20 +1305,6 @@ name = "serde"
 version = "1.0.145"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "728eb6351430bccb993660dfffc5a72f91ccc1295abaa8ce19b27ebe4f75568b"
-dependencies = [
- "serde_derive",
-]
-
-[[package]]
-name = "serde_derive"
-version = "1.0.145"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81fa1584d3d1bcacd84c277a0dfe21f5b0f6accf4a23d04d4c6d61f1af522b4c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "serde_json"
