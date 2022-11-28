@@ -1,35 +1,16 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.224.3/containers/rust
 {
-	"name": "ferronn-dev/rustycasc",
-	"build": {
-		"dockerfile": "Dockerfile",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-from-docker:1": {},
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers-contrib/features/pre-commit:1": {}
 	},
+	"image": "mcr.microsoft.com/devcontainers/rust:bullseye",
+	"name": "ferronn-dev/rustycasc",
+	"postCreateCommand": "pre-commit install --install-hooks",
+	"remoteUser": "vscode",
 	"runArgs": [
 		"--cap-add=SYS_PTRACE",
 		"--security-opt",
 		"seccomp=unconfined"
-	],
-
-	// Set *default* container specific settings.json values on container create.
-	"settings": {
-		"lldb.executable": "/usr/bin/lldb",
-		// VS Code don't watch files under ./target
-		"files.watcherExclude": {
-			"**/target/**": true
-		},
-		"rust-analyzer.checkOnSave.command": "clippy"
-	},
-
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pre-commit install && pre-commit run -a",
-
-	"remoteUser": "root",
-
-	"features": {
-		"docker-from-docker": "latest",
-		"git": "os-provided",
-		"github-cli": "latest",
-		"python": "os-provided"
-	}
+	]
 }
