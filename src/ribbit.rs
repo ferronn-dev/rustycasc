@@ -218,9 +218,9 @@ impl Ribbit {
         let (_, v) = parser(
             mail_parser::Message::parse(&content)
                 .context("mime parsing")?
-                .get_part(1)
+                .part(1)
                 .context("mime part")?
-                .get_text_contents()
+                .text_contents()
                 .context("mime text")?,
         )
         .map_err(|e| e.to_owned())?;
