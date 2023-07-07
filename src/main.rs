@@ -7,9 +7,8 @@ mod types;
 mod util;
 mod wdc3;
 
-use crate::encoding::Encoding;
 use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::FutureExt;
@@ -439,227 +438,6 @@ fn ensuredir(dir: &str) -> Result<()> {
     }
 }
 
-async fn builddb(slug: &str) -> Result<()> {
-    ensuredir("cascdb")?;
-    ensuredir("cascdb/archive")?;
-    ensuredir("cascdb/config")?;
-    ensuredir("cascdb/encoding")?;
-    ensuredir("cascdb/index")?;
-    ensuredir("cascdb/root")?;
-    let client = reqwest::Client::new();
-    let ((build_config, cdn_config), cdn_prefixes) =
-        futures::future::try_join(client.fetch_version(slug), client.fetch_cdns(slug)).await?;
-    struct CdnClient {
-        client: reqwest::Client,
-        cdn_prefixes: Vec<String>,
-        throttle: tokio::sync::Semaphore,
-    }
-    #[async_trait]
-    impl BytesFetcher for CdnClient {
-        async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
-            let _ = self.throttle.acquire().await?;
-            self.client.fetch_bytes(url, range).await
-        }
-    }
-    impl HasCdnPrefixes for CdnClient {
-        fn cdn_prefixes(&self) -> &Vec<String> {
-            &self.cdn_prefixes
-        }
-    }
-    async fn read_file(tag: &str, hash: u128) -> Result<Bytes> {
-        let h = format!("{:032x}", hash);
-        Ok(Bytes::from(
-            tokio::fs::read(format!("cascdb/{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h)).await?,
-        ))
-    }
-    async fn write_file(tag: &str, hash: u128, bytes: &Bytes) -> Result<()> {
-        let h = format!("{:032x}", hash);
-        ensuredir(&format!("cascdb/{}/{}", tag, &h[0..2]))?;
-        ensuredir(&format!("cascdb/{}/{}/{}", tag, &h[0..2], &h[2..4]))?;
-        tokio::fs::write(
-            format!("cascdb/{}/{}/{}/{}", tag, &h[0..2], &h[2..4], h),
-            &bytes,
-        )
-        .await
-        .context(format!("writing file for {} {}", tag, h))
-    }
-    impl CdnClient {
-        async fn fetch_cdn_or_file(
-            &self,
-            cdn_tag: &str,
-            hash: u128,
-            suffix: Option<&str>,
-            local_tag: &str,
-        ) -> Result<Bytes> {
-            if let Ok(bytes) = read_file(local_tag, hash).await {
-                trace!("retrieved {} {:032x} from cascdb", local_tag, hash);
-                return Ok(bytes);
-            }
-            trace!("fetching {} {:032x} from cdn", local_tag, hash);
-            let bytes = self.fetch_cdn_bytes(cdn_tag, hash, suffix, None).await?;
-            write_file(local_tag, hash, &bytes).await?;
-            Ok(bytes)
-        }
-        async fn fetch_config(&self, hash: u128) -> Result<String> {
-            let bytes = self
-                .fetch_cdn_or_file("config", hash, None, "config")
-                .await?;
-            ensure!(hash == util::md5hash(&bytes));
-            Ok(from_utf8(&bytes)?.to_string())
-        }
-        async fn fetch_build_config(&self, hash: u128) -> Result<BuildConfig> {
-            parse_build_config(&parse_config(&self.fetch_config(hash).await?))
-        }
-        async fn fetch_cdn_config(&self, hash: u128) -> Result<Vec<u128>> {
-            parse_config(&self.fetch_config(hash).await?)
-                .get("archives")
-                .context("missing archives in cdninfo")?
-                .split(' ')
-                .map(parse_hash)
-                .collect()
-        }
-        async fn fetch_archive_index(&self, hash: u128) -> Result<archive::Index> {
-            archive::parse_index(
-                ArchiveKey(hash),
-                &self
-                    .fetch_cdn_or_file("data", hash, Some(".index"), "index")
-                    .await?,
-            )
-        }
-        async fn fetch_archive(&self, hash: u128) -> Result<Bytes> {
-            self.fetch_cdn_or_file("data", hash, None, "archive").await
-        }
-        async fn fetch_encoding(&self, hash: u128) -> Result<Encoding> {
-            encoding::parse(&blte::parse(
-                hash,
-                &self
-                    .fetch_cdn_or_file("data", hash, None, "encoding")
-                    .await?,
-            )?)
-        }
-    }
-    let client = &CdnClient {
-        client,
-        cdn_prefixes,
-        throttle: tokio::sync::Semaphore::new(5),
-    };
-    let (
-        BuildConfig {
-            root: root_key,
-            encoding: EncodingKey(encoding_hash),
-        },
-        archive_keys,
-    ) = futures::future::try_join(
-        client.fetch_build_config(build_config),
-        client.fetch_cdn_config(cdn_config),
-    )
-    .await?;
-    let encoding = client.fetch_encoding(encoding_hash).await?;
-    client
-        .fetch_cdn_or_file("data", encoding.c2e(root_key)?.0, None, "root")
-        .await?;
-    for k in archive_keys {
-        client.fetch_archive_index(k).await?;
-        client.fetch_archive(k).await?;
-    }
-    Ok(())
-}
-
-async fn checkdb() -> Result<()> {
-    ensure!(std::fs::metadata("cascdb")?.is_dir());
-
-    struct Checker {
-        re: regex::Regex,
-    }
-    impl Checker {
-        fn valid_filenames(&self, dir: &str) -> Result<()> {
-            let ename = |e: &std::fs::DirEntry| -> Result<String> {
-                e.file_name()
-                    .into_string()
-                    .map_err(|_| anyhow!("invalid filename"))
-            };
-            for e1 in std::fs::read_dir(dir)? {
-                let e1 = e1?;
-                ensure!(
-                    e1.file_type()?.is_dir(),
-                    "{:?} is not a directory",
-                    e1.path()
-                );
-                let s1 = ename(&e1)?;
-                ensure!(self.re.is_match(&s1), "{:?} is not 2-digit hex", e1.path());
-                for e2 in std::fs::read_dir(e1.path())? {
-                    let e2 = e2?;
-                    ensure!(
-                        e2.file_type()?.is_dir(),
-                        "{:?} is not a directory",
-                        e2.path()
-                    );
-                    let s2 = ename(&e2)?;
-                    ensure!(self.re.is_match(&s2), "{:?} is not 2-digit hex", e2.path());
-                    for e3 in std::fs::read_dir(e2.path())? {
-                        let e3 = e3?;
-                        trace!("checking {:?}", e3.path());
-                        ensure!(e3.file_type()?.is_file(), "{:?} is not a file", e3.path());
-                        let s3 = ename(&e3)?;
-                        ensure!(s3.len() == 32, "{:?} is not 32-digit hex", e3.path());
-                        ensure!(
-                            s3[0..2] == s1,
-                            "{:?} has the wrong first two digits",
-                            e3.path()
-                        );
-                        ensure!(
-                            s3[2..4] == s2,
-                            "{:?} has the wrong second two digits",
-                            e3.path()
-                        );
-                        let h3 = parse_hash(&s3)?;
-                        match dir {
-                            "cascdb/config" => {
-                                let bytes = std::fs::read(e3.path())?;
-                                ensure!(
-                                    h3 == util::md5hash(&bytes),
-                                    "{:?} is not named after its checksum",
-                                    e3.path()
-                                );
-                                from_utf8(&bytes).with_context(|| format!("{:?}", e3.path()))?;
-                            }
-                            "cascdb/encoding" => {
-                                let bytes = std::fs::read(e3.path())?;
-                                encoding::parse(&blte::parse(h3, &bytes)?)
-                                    .with_context(|| format!("{:?}", e3.path()))?;
-                            }
-                            "cascdb/index" => {
-                                archive::parse_index(
-                                    ArchiveKey(parse_hash(&s3)?),
-                                    &std::fs::read(e3.path())?,
-                                )
-                                .with_context(|| format!("{:?}", e3.path()))?;
-                            }
-                            "cascdb/root" => {
-                                let bytes = std::fs::read(e3.path())?;
-                                root::parse(&blte::parse(h3, &bytes)?)
-                                    .with_context(|| format!("{:?}", e3.path()))?;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
-    }
-    let checker = Checker {
-        re: regex::Regex::new("^[0-9a-f]{2}$")?,
-    };
-
-    checker.valid_filenames("cascdb/archive")?;
-    checker.valid_filenames("cascdb/config")?;
-    checker.valid_filenames("cascdb/encoding")?;
-    checker.valid_filenames("cascdb/index")?;
-    checker.valid_filenames("cascdb/root")?;
-    Ok(())
-}
-
 #[derive(clap::Parser)]
 #[clap(version, about)]
 struct Cli {
@@ -671,37 +449,10 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum CliCommands {
-    #[clap(name = "db")]
-    Database(CliDatabaseArgs),
     #[clap(name = "framexml")]
     FrameXml(CliFrameXmlArgs),
     #[clap(name = "ribbit")]
     Ribbit(CliRibbitArgs),
-}
-
-#[derive(clap::Args)]
-struct CliDatabaseArgs {
-    #[clap(subcommand)]
-    command: CliDatabaseCommands,
-}
-
-#[derive(clap::Subcommand)]
-enum CliDatabaseCommands {
-    #[clap(name = "check")]
-    Check(CliDatabaseCheckArgs),
-    #[clap(name = "fetch")]
-    Fetch(CliDatabaseFetchArgs),
-}
-
-#[derive(clap::Args)]
-struct CliDatabaseCheckArgs {}
-
-#[derive(clap::Args)]
-struct CliDatabaseFetchArgs {
-    #[clap(short, long, ignore_case(true))]
-    product: Product,
-    #[clap(long)]
-    ptr: bool,
 }
 
 #[derive(clap::Args)]
@@ -752,10 +503,6 @@ async fn main() -> Result<()> {
         .verbosity(cli.verbose as usize)
         .init()?;
     match &cli.command {
-        CliCommands::Database(args) => match &args.command {
-            CliDatabaseCommands::Check(_) => checkdb().await,
-            CliDatabaseCommands::Fetch(args) => builddb(product_slug(args.product, args.ptr)).await,
-        },
         CliCommands::FrameXml(args) => {
             ensuredir("zips")?;
             process(args.product, args.ptr).await
