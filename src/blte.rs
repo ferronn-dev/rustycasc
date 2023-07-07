@@ -15,29 +15,19 @@ fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
     })
 }
 
-pub(crate) fn checksum(data: &[u8]) -> Result<u128> {
+pub(crate) fn parse(checksum: u128, data: &[u8]) -> Result<Vec<u8>> {
     let mut p = data;
     ensure!(p.remaining() >= 12, "truncated header");
     ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
-    let header_size: usize = p.get_u32().try_into()?;
+    let header_size = p.get_u32().try_into()?;
     if header_size == 0 {
-        Ok(util::md5hash(data))
-    } else {
-        ensure!(p.remaining() >= header_size - 8);
-        Ok(util::md5hash(&data[0..header_size]))
-    }
-}
-
-pub(crate) fn parse(data: &[u8]) -> Result<Vec<u8>> {
-    let mut p = data;
-    ensure!(p.remaining() >= 12, "truncated header");
-    ensure!(&p.get_u32().to_be_bytes() == b"BLTE", "not BLTE format");
-    let header_size = p.get_u32();
-    if header_size == 0 {
+        ensure!(util::md5hash(data) == checksum);
         return Ok(parse_blte_chunk(p)?.to_vec());
     }
+    ensure!(p.remaining() >= header_size - 8);
+    ensure!(util::md5hash(&data[0..header_size]) == checksum);
     ensure!(p.get_u8() == 0xf, "bad flag byte");
-    let chunk_count = (u32::from(p.get_u8()) << 16) | u32::from(p.get_u16());
+    let chunk_count: usize = ((u32::from(p.get_u8()) << 16) | u32::from(p.get_u16())).try_into()?;
     ensure!(header_size == chunk_count * 24 + 12, "header size mismatch");
     let mut chunkinfo = Vec::<(usize, usize, u128)>::new();
     for _ in 0..chunk_count {

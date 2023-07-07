@@ -319,22 +319,21 @@ async fn process(product: Product, ptr: bool) -> Result<()> {
         let buildinfo = parse_build_config(&parse_config(from_utf8(
             &(cdn_fetch("config", build_config).await?),
         )?))?;
+        let encoding_key = buildinfo.encoding.0;
         let encoding = encoding::parse(&blte::parse(
-            &(cdn_fetch("data", buildinfo.encoding.0).await?),
+            encoding_key,
+            &(cdn_fetch("data", encoding_key).await?),
         )?)?;
-        let root = root::parse(&blte::parse(
-            &cdn_fetch("data", encoding.c2e(buildinfo.root)?.0).await?,
-        )?)?;
+        let root_key = encoding.c2e(buildinfo.root)?.0;
+        let root = root::parse(&blte::parse(root_key, &cdn_fetch("data", root_key).await?)?)?;
         Result::<_>::Ok((encoding, root))
     };
     let (archive_index, (encoding, root)) =
         futures::future::try_join(archive_index, encoding_and_root).await?;
     let (archive_index, encoding, root) = (&archive_index, &encoding, &root);
     let fetch_content = |ckey| async move {
-        let (archive, size, offset) = archive_index
-            .map
-            .get(&encoding.c2e(ckey)?)
-            .context("missing index key")?;
+        let ekey = encoding.c2e(ckey)?;
+        let (archive, size, offset) = archive_index.map.get(&ekey).context("missing index key")?;
         let response = do_cdn_fetch(
             "data",
             archive.0,
@@ -342,7 +341,7 @@ async fn process(product: Product, ptr: bool) -> Result<()> {
             Some((*offset, *offset + *size - 1)),
         )
         .await?;
-        let bytes = blte::parse(&response)?;
+        let bytes = blte::parse(ekey.0, &response)?;
         ensure!(util::md5hash(&bytes) == ckey.0, "checksum fail on {}", ckey);
         Ok(bytes)
     };
@@ -532,6 +531,7 @@ async fn builddb(slug: &str) -> Result<()> {
         }
         async fn fetch_encoding(&self, hash: u128) -> Result<Encoding> {
             encoding::parse(&blte::parse(
+                hash,
                 &self
                     .fetch_cdn_or_file("data", hash, None, "encoding")
                     .await?,
@@ -625,8 +625,7 @@ async fn checkdb() -> Result<()> {
                             }
                             "cascdb/encoding" => {
                                 let bytes = std::fs::read(e3.path())?;
-                                ensure!(h3 == blte::checksum(&bytes)?);
-                                encoding::parse(&blte::parse(&bytes)?)
+                                encoding::parse(&blte::parse(h3, &bytes)?)
                                     .with_context(|| format!("{:?}", e3.path()))?;
                             }
                             "cascdb/index" => {
@@ -638,8 +637,7 @@ async fn checkdb() -> Result<()> {
                             }
                             "cascdb/root" => {
                                 let bytes = std::fs::read(e3.path())?;
-                                ensure!(h3 == blte::checksum(&bytes)?);
-                                root::parse(&blte::parse(&bytes)?)
+                                root::parse(&blte::parse(h3, &bytes)?)
                                     .with_context(|| format!("{:?}", e3.path()))?;
                             }
                             _ => {}
