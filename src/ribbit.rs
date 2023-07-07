@@ -202,7 +202,6 @@ impl Ribbit {
         stream.write_all(cmd)?;
         stream.write_all(b"\r\n")?;
         stream.flush()?;
-        stream.shutdown(std::net::Shutdown::Write)?;
 
         let mut content = Vec::new();
         stream.read_to_end(&mut content)?;
