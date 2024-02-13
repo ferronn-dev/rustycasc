@@ -6,7 +6,8 @@ use nom_derive::{nom, NomLE, Parse};
 
 #[derive(Debug, NomLE)]
 struct Header {
-    _magic: [u8; 4],
+    magic: [u8; 4],
+    _unused: [u8; 132],
     _record_count: u32,
     _field_count: u32,
     record_size: u32,
@@ -131,11 +132,16 @@ struct File {
 pub(crate) fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
     let File {
         mut sections,
-        header: Header {
-            flags, record_size, ..
-        },
+        header:
+            Header {
+                magic,
+                flags,
+                record_size,
+                ..
+            },
         ..
     } = File::parse(data).map_err(|_| Error::msg("parse error"))?.1;
+    ensure!(magic == *b"WDC5", "unsupported magic");
     ensure!(flags == 4, "unsupported flags");
     ensure!(sections.len() == 1, "unsupported number of sections");
     let Section {
