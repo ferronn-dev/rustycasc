@@ -1,11 +1,11 @@
 mod archive;
 mod blte;
+mod db2;
 mod encoding;
 mod ribbit;
 mod root;
 mod types;
 mod util;
-mod wdc3;
 
 use crate::types::{ArchiveKey, ContentKey, EncodingKey, FileDataID};
 use anyhow::{bail, ensure, Context, Result};
@@ -318,14 +318,14 @@ async fn process(product: &str) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
-    let fdids = wdc3::strings(&fetch_fdid(FileDataID(1375801)).await?)?
+    let fdids = db2::strings(&fetch_fdid(FileDataID(1375801)).await?)?
         .into_iter()
         .map(|(k, v)| (v.join("").to_lowercase(), FileDataID(k)))
         .collect::<HashMap<String, FileDataID>>();
     tokio::fs::write(
         format!("zips/{}.zip", product),
         to_zip_archive_bytes({
-            let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(FileDataID(1267335)).await?)?
+            let mut stack: Vec<String> = db2::strings(&fetch_fdid(FileDataID(1267335)).await?)?
                 .into_values()
                 .flatten()
                 .chain(["Interface\\FrameXML\\".to_string()])
