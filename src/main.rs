@@ -229,38 +229,11 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     Ok(zipbuf)
 }
 
-#[allow(clippy::upper_case_acronyms)]
-#[derive(clap::ValueEnum, Clone, Copy)]
-enum Product {
-    Vanilla,
-    TBC,
-    Retail,
-}
-
-fn product_slug(product: Product, ptr: bool) -> &'static str {
-    match (product, ptr) {
-        (Product::Vanilla, false) => "wow_classic_era",
-        (Product::Vanilla, true) => "wow_classic_era_ptr",
-        (Product::TBC, false) => "wow_classic",
-        (Product::TBC, true) => "wow_classic_ptr",
-        (Product::Retail, false) => "wow",
-        (Product::Retail, true) => "wowt",
-    }
-}
-
-async fn process(product: Product, ptr: bool) -> Result<()> {
-    let product_suffix = match &product {
-        Product::Vanilla => "Vanilla",
-        Product::TBC => "TBC",
-        Product::Retail => "Mainline",
-    };
-    let patch_suffix = product_slug(product, ptr);
+async fn process(product: &str) -> Result<()> {
     let client = reqwest::Client::new();
-    let ((build_config, cdn_config), cdn_prefixes) = futures::future::try_join(
-        client.fetch_version(patch_suffix),
-        client.fetch_cdns(patch_suffix),
-    )
-    .await?;
+    let ((build_config, cdn_config), cdn_prefixes) =
+        futures::future::try_join(client.fetch_version(product), client.fetch_cdns(product))
+            .await?;
     struct CdnClient {
         client: reqwest::Client,
         cdn_prefixes: Vec<String>,
@@ -350,7 +323,7 @@ async fn process(product: Product, ptr: bool) -> Result<()> {
         .map(|(k, v)| (v.join("").to_lowercase(), FileDataID(k)))
         .collect::<HashMap<String, FileDataID>>();
     tokio::fs::write(
-        format!("zips/{}.zip", patch_suffix),
+        format!("zips/{}.zip", product),
         to_zip_archive_bytes({
             let mut stack: Vec<String> = wdc3::strings(&fetch_fdid(FileDataID(1267335)).await?)?
                 .into_values()
@@ -358,7 +331,7 @@ async fn process(product: Product, ptr: bool) -> Result<()> {
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
                     let dirname = s[..s.len() - 1].split('\\').last()?;
-                    let toc1 = format!("{}{}_{}.toc", s, dirname, product_suffix);
+                    let toc1 = format!("{}{}_{}.toc", s, dirname, product);
                     let toc2 = format!("{}{}.toc", s, dirname);
                     root.n2c(&toc1)
                         .and(Ok(toc1))
@@ -457,10 +430,8 @@ enum CliCommands {
 
 #[derive(clap::Args)]
 struct CliFrameXmlArgs {
-    #[clap(short, long, ignore_case(true))]
-    product: Product,
-    #[clap(long)]
-    ptr: bool,
+    #[clap(value_parser)]
+    product: String,
 }
 
 #[derive(clap::Args)]
@@ -505,7 +476,7 @@ async fn main() -> Result<()> {
     match &cli.command {
         CliCommands::FrameXml(args) => {
             ensuredir("zips")?;
-            process(args.product, args.ptr).await
+            process(&args.product).await
         }
         CliCommands::Ribbit(args) => match &args.command {
             CliRibbitCommands::Summary => {
