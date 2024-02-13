@@ -169,5 +169,5 @@ pub(crate) fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
                 .collect::<Result<Vec<_>>>()
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(id_list.into_iter().zip(values.into_iter()).collect())
+    Ok(id_list.into_iter().zip(values).collect())
 }

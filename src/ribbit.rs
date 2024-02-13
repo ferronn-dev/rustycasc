@@ -215,7 +215,8 @@ impl Ribbit {
         );
 
         let (_, v) = parser(
-            mail_parser::Message::parse(&content)
+            mail_parser::MessageParser::default()
+                .parse(&content)
                 .context("mime parsing")?
                 .part(1)
                 .context("mime part")?

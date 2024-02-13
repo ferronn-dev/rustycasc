@@ -21,7 +21,7 @@ impl Encoding {
             .get(&c)
             .context(format!("no encoding key for content key {}", c))?
             .0
-            .get(0)
+            .first()
             .context(format!("missing encoding key for content key {}", c))?)
     }
 }
@@ -33,8 +33,8 @@ pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
     ensure!(p.get_u8() == 1, "unsupported encoding version");
     ensure!(p.get_u8() == 16, "unsupported ckey hash size");
     ensure!(p.get_u8() == 16, "unsupported ekey hash size");
-    let cpagekb: usize = p.get_u16().try_into()?;
-    let epagekb: usize = p.get_u16().try_into()?;
+    let cpagekb: usize = p.get_u16().into();
+    let epagekb: usize = p.get_u16().into();
     let ccount: usize = p.get_u32().try_into()?;
     let ecount: usize = p.get_u32().try_into()?;
     ensure!(p.get_u8() == 0, "unexpected nonzero byte in header");
@@ -60,7 +60,7 @@ pub(crate) fn parse(data: &[u8]) -> Result<Encoding> {
         let mut page = p.take(pagesize);
         let mut first = true;
         while page.remaining() >= 22 && page.chunk()[0] != b'0' {
-            let key_count = page.get_u8().try_into()?;
+            let key_count = page.get_u8().into();
             let file_size = (u64::from(page.get_u8()) << 32) | u64::from(page.get_u32());
             let ckey = ContentKey(page.get_u128());
             ensure!(!first || first_key == ckey, "first key mismatch in content");
