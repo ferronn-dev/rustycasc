@@ -221,7 +221,10 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zipbuf));
         for (name, data) in m {
             use std::io::Write;
-            zip.start_file(name.replace('\\', "/"), zip::write::FileOptions::default())?;
+            zip.start_file(
+                name.replace('\\', "/"),
+                zip::write::SimpleFileOptions::default(),
+            )?;
             zip.write_all(&data)?;
         }
         zip.finish().context("zip archive failed to close")?;
