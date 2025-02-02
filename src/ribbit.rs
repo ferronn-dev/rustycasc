@@ -56,38 +56,38 @@ mod parsers {
         character::complete::{digit1, hex_digit1, newline},
         combinator::{eof, map, map_res, opt},
         multi::{fold_many0, separated_list0},
-        sequence::{delimited, terminated, tuple},
-        IResult,
+        sequence::{delimited, terminated},
+        IResult, Parser,
     };
 
     use super::{CDNs, Summary, Versions};
     use super::{CDNsEntry, SummaryEntry, VersionsEntry};
 
     fn dec32(s: &str) -> IResult<&str, u32> {
-        map_res(digit1, |s: &str| s.parse::<u32>())(s)
+        map_res(digit1, |s: &str| s.parse::<u32>()).parse(s)
     }
 
     fn hex128(s: &str) -> IResult<&str, u128> {
-        map_res(hex_digit1, |s: &str| u128::from_str_radix(s, 16))(s)
+        map_res(hex_digit1, |s: &str| u128::from_str_radix(s, 16)).parse(s)
     }
 
     pub(crate) fn strs(s: &str) -> IResult<&str, Vec<String>> {
-        separated_list0(tag(" "), map(is_not(" |"), |s: &str| s.to_owned()))(s)
+        separated_list0(tag(" "), map(is_not(" |"), |s: &str| s.to_owned())).parse(s)
     }
 
     pub(crate) fn summary(s: &str) -> IResult<&str, Summary> {
         delimited(
             tag("Product!STRING:0|Seqn!DEC:4|Flags!STRING:0\n"),
             map(
-                tuple((
+                (
                     delimited(tag("## seqn = "), dec32, newline),
                     fold_many0(
                         terminated(
-                            tuple((
+                            (
                                 is_not("|"),
                                 delimited(tag("|"), dec32, tag("|")),
                                 alt((tag("bgdl"), tag("cdn"), tag(""))),
-                            )),
+                            ),
                             newline,
                         ),
                         HashMap::new,
@@ -103,22 +103,23 @@ mod parsers {
                             m
                         },
                     ),
-                )),
+                ),
                 |(seqn, entries)| Summary { seqn, entries },
             ),
             eof,
-        )(s)
+        )
+        .parse(s)
     }
 
     pub(crate) fn versions(s: &str) -> IResult<&str, Versions> {
         delimited(
-            tuple((take_until("\n"), newline)),
+            (take_until("\n"), newline),
             map(
-                tuple((
+                (
                     delimited(tag("## seqn = "), dec32, newline),
                     fold_many0(
                         map(
-                            tuple((
+                            (
                                 terminated(is_not("|"), tag("|")),
                                 terminated(hex128, tag("|")),
                                 terminated(hex128, tag("|")),
@@ -126,7 +127,7 @@ mod parsers {
                                 terminated(dec32, tag("|")),
                                 terminated(is_not("|"), tag("|")),
                                 terminated(opt(hex128), newline),
-                            )),
+                            ),
                             |(r, bcfg, c, k, bid, v, p)| VersionsEntry {
                                 region: r.to_owned(),
                                 build_config: bcfg,
@@ -143,28 +144,29 @@ mod parsers {
                             m
                         },
                     ),
-                )),
+                ),
                 |(seqn, entries)| Versions { seqn, entries },
             ),
             eof,
-        )(s)
+        )
+        .parse(s)
     }
 
     pub(crate) fn cdns(s: &str) -> IResult<&str, CDNs> {
         delimited(
-            tuple((take_until("\n"), newline)),
+            (take_until("\n"), newline),
             map(
-                tuple((
+                (
                     delimited(tag("## seqn = "), dec32, newline),
                     fold_many0(
                         map(
-                            tuple((
+                            (
                                 terminated(is_not("|"), tag("|")),
                                 terminated(is_not("|"), tag("|")),
                                 terminated(strs, tag("|")),
                                 terminated(strs, tag("|")),
                                 terminated(is_not("\n"), newline),
-                            )),
+                            ),
                             |(a, b, c, d, e)| CDNsEntry {
                                 region: a.to_owned(),
                                 path: b.to_owned(),
@@ -179,11 +181,12 @@ mod parsers {
                             m
                         },
                     ),
-                )),
+                ),
                 |(seqn, entries)| CDNs { seqn, entries },
             ),
             eof,
-        )(s)
+        )
+        .parse(s)
     }
 }
 
