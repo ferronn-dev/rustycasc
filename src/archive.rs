@@ -48,7 +48,7 @@ pub(crate) fn parse_index(name: ArchiveKey, data: &[u8]) -> Result<Index> {
         footer.get_u8() == 8,
         "unexpected archive index checksum size"
     );
-    let num_elements = footer.get_u32_le().try_into()?;
+    let num_elements: usize = footer.get_u32_le().try_into()?;
     let footer_checksum = footer.get_u64();
     assert!(!footer.has_remaining());
     {
