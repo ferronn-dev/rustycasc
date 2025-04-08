@@ -333,7 +333,7 @@ async fn process(product: &str) -> Result<()> {
                 .flatten()
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
-                    let dirname = s[..s.len() - 1].split('\\').last()?;
+                    let dirname = s[..s.len() - 1].split('\\').next_back()?;
                     let toc1 = format!("{}{}_{}.toc", s, dirname, product);
                     let toc2 = format!("{}{}.toc", s, dirname);
                     root.n2c(&toc1)
