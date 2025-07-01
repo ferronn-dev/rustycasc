@@ -27,7 +27,7 @@ miniz_oxide = "0.8.8"
 nom = "8.0.0"
 nom-derive = "0.10.1"
 regex = "1.11.1"
-reqwest = "0.12.18"
+reqwest = "0.12.21"
 sha2 = "0.10.9"
 stderrlog = "0.6.0"
 tokio = { version = "1.45.1", features = ["fs", "macros", "rt-multi-thread"] }
