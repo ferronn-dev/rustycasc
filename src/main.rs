@@ -26,23 +26,23 @@ impl BytesFetcher for reqwest::Client {
     async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
         let mut req = self.get(&url);
         if let Some((start, end)) = range {
-            req = req.header("Range", format!("bytes={}-{}", start, end));
+            req = req.header("Range", format!("bytes={start}-{end}"));
         }
-        trace!("starting fetch of {}", url);
+        trace!("starting fetch of {url}");
         let response = req
             .send()
             .await
-            .context(format!("sending request to {}", url))?;
+            .context(format!("sending request to {url}"))?;
         ensure!(
             response.status().is_success(),
-            format!("http error on {}", url)
+            format!("http error on {url}")
         );
-        trace!("receiving content on {}", url);
+        trace!("receiving content on {url}");
         let data = response
             .bytes()
             .await
-            .context(format!("receiving content on {}", url))?;
-        trace!("done retrieving {}", url);
+            .context(format!("receiving content on {url}"))?;
+        trace!("done retrieving {url}");
         Ok(data)
     }
 }
@@ -69,10 +69,7 @@ trait PatchDataFetcher {
 impl<T: TextFetcher + Sync> PatchDataFetcher for T {
     async fn fetch_version(&self, suffix: &str) -> Result<(u128, u128)> {
         let info = self
-            .fetch_text(format!(
-                "http://us.patch.battle.net:1119/{}/versions",
-                suffix
-            ))
+            .fetch_text(format!("http://us.patch.battle.net:1119/{suffix}/versions"))
             .await?;
         let version = parse_info(&info)
             .into_iter()
@@ -92,7 +89,7 @@ impl<T: TextFetcher + Sync> PatchDataFetcher for T {
     }
     async fn fetch_cdns(&self, suffix: &str) -> Result<Vec<String>> {
         let info = self
-            .fetch_text(format!("http://us.patch.battle.net:1119/{}/cdns", suffix))
+            .fetch_text(format!("http://us.patch.battle.net:1119/{suffix}/cdns"))
             .await?;
         let cdn = parse_info(&info)
             .into_iter()
@@ -100,7 +97,7 @@ impl<T: TextFetcher + Sync> PatchDataFetcher for T {
             .context("missing us cdn")?;
         let hosts = cdn.get("Hosts").context("missing us cdn hosts")?.split(' ');
         let path = cdn.get("Path").context("missing us cdn path")?;
-        Ok(hosts.map(|s| format!("http://{}/{}", s, path)).collect())
+        Ok(hosts.map(|s| format!("http://{s}/{path}")).collect())
     }
 }
 
@@ -128,22 +125,20 @@ impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
         suffix: Option<&str>,
         range: Option<(usize, usize)>,
     ) -> Result<Bytes> {
-        let h = format!("{:032x}", hash);
+        let h = format!("{hash:032x}");
         let path = format!(
-            "{}/{}/{}/{}{}",
-            tag,
+            "{tag}/{}/{}/{h}{}",
             &h[0..2],
             &h[2..4],
-            h,
             suffix.unwrap_or("")
         );
-        trace!("cdn fetch {}", path);
+        trace!("cdn fetch {path}");
         for _ in 1..10 {
             for cdn_prefix in self.cdn_prefixes() {
-                let url = format!("{}/{}", cdn_prefix, path);
+                let url = format!("{cdn_prefix}/{path}");
                 match self.fetch_bytes(url, range).await {
                     Ok(data) => return Ok(data),
-                    Err(msg) => warn!("fetch failed: {:#?}", msg),
+                    Err(msg) => warn!("fetch failed: {msg:#?}"),
                 }
             }
         }
@@ -326,7 +321,7 @@ async fn process(product: &str) -> Result<()> {
         .map(|(k, v)| (v.join("").to_lowercase(), FileDataID(k)))
         .collect::<HashMap<String, FileDataID>>();
     tokio::fs::write(
-        format!("zips/{}.zip", product),
+        format!("zips/{product}.zip"),
         to_zip_archive_bytes({
             let mut stack: Vec<String> = db2::strings(&fetch_fdid(FileDataID(1267335)).await?)?
                 .into_values()
@@ -334,8 +329,8 @@ async fn process(product: &str) -> Result<()> {
                 .chain(["Interface\\FrameXML\\".to_string()])
                 .filter_map(|s| {
                     let dirname = s[..s.len() - 1].split('\\').next_back()?;
-                    let toc1 = format!("{}{}_{}.toc", s, dirname, product);
-                    let toc2 = format!("{}{}.toc", s, dirname);
+                    let toc1 = format!("{s}{dirname}_{product}.toc");
+                    let toc2 = format!("{s}{dirname}.toc");
                     root.n2c(&toc1)
                         .and(Ok(toc1))
                         .or_else(|_| root.n2c(&toc2).and(Ok(toc2)))
@@ -352,7 +347,7 @@ async fn process(product: &str) -> Result<()> {
                 }) {
                     Some(ckey) => fetch_content(ckey).inspect(|_| pb.inc(1)).await?,
                     None => {
-                        eprintln!("skipping file with no content key: {}", file);
+                        eprintln!("skipping file with no content key: {file}");
                         pb.inc(1);
                         continue;
                     }
@@ -408,8 +403,8 @@ fn ensuredir(dir: &str) -> Result<()> {
         Some(true) => Ok(()),
         Some(false) => bail!("{} is not a directory", dir),
         None => {
-            trace!("creating directory {}", dir);
-            std::fs::create_dir(dir).context(format!("error creating {}", dir))
+            trace!("creating directory {dir}");
+            std::fs::create_dir(dir).context(format!("error creating {dir}"))
         }
     }
 }
@@ -499,12 +494,12 @@ async fn main() -> Result<()> {
                 let summary = ribbit.summary()?;
                 println!("summary seqn = {}", summary.seqn);
                 for (k, v) in summary.entries {
-                    println!("looking at {}", k);
+                    println!("looking at {k}");
                     if v.seqn.is_some() {
-                        println!("{} versions seqn = {}", k, ribbit.versions(&k)?.seqn);
+                        println!("{k} versions seqn = {}", ribbit.versions(&k)?.seqn);
                     }
                     if v.cdn.is_some() {
-                        println!("{} cdns seqn = {}", k, ribbit.cdns(&k)?.seqn);
+                        println!("{k} cdns seqn = {}", ribbit.cdns(&k)?.seqn);
                     }
                 }
                 Ok(())

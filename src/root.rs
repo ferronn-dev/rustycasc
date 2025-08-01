@@ -29,7 +29,7 @@ impl Root {
         Ok(self.data[*self
             .nmap
             .get(&hash)
-            .with_context(|| format!("missing name hash in root: {}", name))?]
+            .with_context(|| format!("missing name hash in root: {name}"))?]
         .content_key)
     }
 }

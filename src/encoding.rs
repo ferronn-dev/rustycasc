@@ -19,10 +19,10 @@ impl Encoding {
         Ok(*self
             .cmap
             .get(&c)
-            .context(format!("no encoding key for content key {}", c))?
+            .context(format!("no encoding key for content key {c}"))?
             .0
             .first()
-            .context(format!("missing encoding key for content key {}", c))?)
+            .context(format!("missing encoding key for content key {c}"))?)
     }
 }
 

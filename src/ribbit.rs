@@ -234,13 +234,13 @@ impl Ribbit {
     }
     pub fn versions(&mut self, product: &str) -> Result<Versions> {
         self.command(
-            format!("v1/products/{}/versions", product).as_bytes(),
+            format!("v1/products/{product}/versions").as_bytes(),
             parsers::versions,
         )
     }
     pub fn cdns(&mut self, product: &str) -> Result<CDNs> {
         self.command(
-            format!("v1/products/{}/cdns", product).as_bytes(),
+            format!("v1/products/{product}/cdns").as_bytes(),
             parsers::cdns,
         )
     }

@@ -9,7 +9,7 @@ fn parse_blte_chunk(data: &[u8]) -> Result<bytes::Bytes> {
     Ok(match data[0] {
         b'N' => Bytes::from(chunk_data.to_vec()),
         b'Z' => {
-            Bytes::from(inflate(chunk_data).map_err(|s| anyhow!(format!("inflate error {:?}", s)))?)
+            Bytes::from(inflate(chunk_data).map_err(|s| anyhow!(format!("inflate error {s:?}")))?)
         }
         _ => bail!("invalid encoding"),
     })
