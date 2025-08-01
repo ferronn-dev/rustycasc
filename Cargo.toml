@@ -30,7 +30,7 @@ regex = "1.11.1"
 reqwest = "0.12.22"
 sha2 = "0.10.9"
 stderrlog = "0.6.0"
-tokio = { version = "1.46.0", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.47.0", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "0.5.4"
 xml-rs = "0.8.26"
 zip = "4.2.0"
