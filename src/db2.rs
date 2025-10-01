@@ -153,7 +153,7 @@ pub(crate) fn strings(data: &[u8]) -> Result<HashMap<u32, Vec<String>>> {
     let num_records = records.len();
     ensure!(id_list.len() == num_records, "unexpected record count");
     let rsize: usize = record_size.try_into()?;
-    ensure!(rsize % 4 == 0, "unexpected record size");
+    ensure!(rsize.is_multiple_of(4), "unexpected record size");
     let values = records
         .into_iter()
         .enumerate()

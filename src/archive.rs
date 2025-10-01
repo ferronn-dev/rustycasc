@@ -17,7 +17,7 @@ pub(crate) fn parse_index(name: ArchiveKey, data: &[u8]) -> Result<Index> {
     let bytes_per_block = 4096 + 24;
     let num_blocks = non_footer_size / bytes_per_block;
     ensure!(
-        non_footer_size % bytes_per_block == 0,
+        non_footer_size.is_multiple_of(bytes_per_block),
         "invalid archive index format"
     );
     let mut footer = &data[non_footer_size..];
