@@ -13,7 +13,7 @@ license-file = "LICENSE"
 anyhow = "1.0.100"
 async-trait = "0.1.89"
 bytes = "1.11.0"
-clap = { version = "4.5.54", features = ["derive"] }
+clap = { version = "4.5.56", features = ["derive"] }
 derive_more = { version = "2.1.1", features = ["display"] }
 futures = "0.3.31"
 hashers = "1.0.1"
@@ -23,7 +23,7 @@ itertools = "0.14.0"
 log = "0.4.29"
 mail-parser = "0.11.1"
 md5 = "0.8.0"
-miniz_oxide = "0.8.9"
+miniz_oxide = "0.9.0"
 nom = "8.0.0"
 nom-derive = "0.10.1"
 regex = "1.12.2"
@@ -33,4 +33,4 @@ stderrlog = "0.6.0"
 tokio = { version = "1.49.0", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "0.5.4"
 xml-rs = "1.0.0"
-zip = "7.0.0"
+zip = "7.2.0"
