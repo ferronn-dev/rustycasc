@@ -39,11 +39,23 @@ pub(crate) fn parse(data: &[u8]) -> Result<Root> {
     ensure!(p.remaining() >= 4, "empty root?");
     let interleave;
     let can_skip;
+    let mut version = 1u32;
     if p[..4] == *b"TSFM" {
         p.advance(4);
-        ensure!(p.remaining() >= 8, "truncated root header");
+        ensure!(p.remaining() >= 20, "truncated root header");
+        let header_size = p.get_u32_le();
+        ensure!(
+            header_size == 24,
+            "unexpected root header size {header_size}"
+        );
+        version = p.get_u32_le();
+        ensure!(
+            version == 1 || version == 2,
+            "unsupported root version {version}"
+        );
         let total_file_count = p.get_u32_le();
         let named_file_count = p.get_u32_le();
+        p.advance(4); // reserved
         interleave = false;
         can_skip = total_file_count != named_file_count;
     } else {
@@ -52,10 +64,23 @@ pub(crate) fn parse(data: &[u8]) -> Result<Root> {
     }
     let mut result = Vec::<RootData>::new();
     while p.has_remaining() {
-        ensure!(p.remaining() >= 12, "truncated root cas block");
+        let block_header_size = if interleave || version == 1 { 12 } else { 17 };
+        ensure!(
+            p.remaining() >= block_header_size,
+            "truncated root cas block"
+        );
         let num_records: usize = p.get_u32_le().try_into()?;
-        let content_flags = p.get_u32_le();
-        let _locale_flags = p.get_u32_le();
+        let content_flags = if interleave || version == 1 {
+            let flags = p.get_u32_le();
+            let _locale_flags = p.get_u32_le();
+            flags
+        } else {
+            let _locale_flags = p.get_u32_le();
+            let flags_lo = p.get_u32_le();
+            let flags_hi = p.get_u32_le();
+            let flags_ext = p.get_u8();
+            flags_lo | flags_hi | ((flags_ext as u32) << 17)
+        };
         ensure!(
             p.remaining() >= 4 * num_records,
             "truncated filedataid delta block"
