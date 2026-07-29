@@ -28,9 +28,11 @@ nom = "8.0.0"
 nom-derive = "0.10.1"
 regex = "1.13.1"
 reqwest = "0.13.4"
+reqwest-middleware = "0.5.2"
+reqwest-retry = "0.9.1"
 sha2 = "0.11.0"
 stderrlog = "0.6.0"
-tokio = { version = "1.53.1", features = ["fs", "macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.53.1", features = ["fs", "macros", "rt-multi-thread"] }
 velcro = "0.5.4"
 xml-rs = "1.0.0"
 zip = "8.6.0"

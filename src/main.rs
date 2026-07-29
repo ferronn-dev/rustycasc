@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::FutureExt;
 use log::{trace, warn};
+use reqwest_middleware::ClientWithMiddleware;
 use std::collections::HashMap;
 use std::str::from_utf8;
 
@@ -22,7 +23,7 @@ trait BytesFetcher {
 }
 
 #[async_trait]
-impl BytesFetcher for reqwest::Client {
+impl BytesFetcher for ClientWithMiddleware {
     async fn fetch_bytes(&self, url: String, range: Option<(usize, usize)>) -> Result<Bytes> {
         let mut req = self.get(&url);
         if let Some((start, end)) = range {
@@ -133,18 +134,11 @@ impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
             suffix.unwrap_or("")
         );
         trace!("cdn fetch {path}");
-        let mut delay = std::time::Duration::from_millis(250);
-        for attempt in 1..10 {
-            for cdn_prefix in self.cdn_prefixes() {
-                let url = format!("{cdn_prefix}/{path}");
-                match self.fetch_bytes(url, range).await {
-                    Ok(data) => return Ok(data),
-                    Err(msg) => warn!("fetch failed: {msg:#?}"),
-                }
-            }
-            if attempt < 9 {
-                tokio::time::sleep(delay).await;
-                delay = (delay * 2).min(std::time::Duration::from_secs(5));
+        for cdn_prefix in self.cdn_prefixes() {
+            let url = format!("{cdn_prefix}/{path}");
+            match self.fetch_bytes(url, range).await {
+                Ok(data) => return Ok(data),
+                Err(msg) => warn!("fetch failed: {msg:#?}"),
             }
         }
         bail!("fetch failed on all hosts: {}", path)
@@ -233,15 +227,21 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
 }
 
 async fn process(product: &str) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .context("building http client")?;
+    let client = reqwest_middleware::ClientBuilder::new(
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .context("building http client")?,
+    )
+    .with(reqwest_retry::RetryTransientMiddleware::new_with_policy(
+        reqwest_retry::policies::ExponentialBackoff::builder().build_with_max_retries(3),
+    ))
+    .build();
     let ((build_config, cdn_config), cdn_prefixes) =
         futures::future::try_join(client.fetch_version(product), client.fetch_cdns(product))
             .await?;
     struct CdnClient {
-        client: reqwest::Client,
+        client: ClientWithMiddleware,
         cdn_prefixes: Vec<String>,
         throttle: tokio::sync::Semaphore,
     }
