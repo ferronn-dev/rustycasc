@@ -133,13 +133,18 @@ impl<T: BytesFetcher + HasCdnPrefixes + Sync> CdnBytesFetcher for T {
             suffix.unwrap_or("")
         );
         trace!("cdn fetch {path}");
-        for _ in 1..10 {
+        let mut delay = std::time::Duration::from_millis(250);
+        for attempt in 1..10 {
             for cdn_prefix in self.cdn_prefixes() {
                 let url = format!("{cdn_prefix}/{path}");
                 match self.fetch_bytes(url, range).await {
                     Ok(data) => return Ok(data),
                     Err(msg) => warn!("fetch failed: {msg:#?}"),
                 }
+            }
+            if attempt < 9 {
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(std::time::Duration::from_secs(5));
             }
         }
         bail!("fetch failed on all hosts: {}", path)
@@ -228,7 +233,10 @@ fn to_zip_archive_bytes(m: HashMap<String, Vec<u8>>) -> Result<Vec<u8>> {
 }
 
 async fn process(product: &str) -> Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("building http client")?;
     let ((build_config, cdn_config), cdn_prefixes) =
         futures::future::try_join(client.fetch_version(product), client.fetch_cdns(product))
             .await?;
