@@ -36,41 +36,32 @@ impl Root {
 
 pub(crate) fn parse(data: &[u8]) -> Result<Root> {
     let mut p = data;
-    ensure!(p.remaining() >= 4, "empty root?");
-    let interleave;
-    let can_skip;
-    let mut version = 1u32;
-    if p[..4] == *b"TSFM" {
-        p.advance(4);
-        ensure!(p.remaining() >= 20, "truncated root header");
-        let header_size = p.get_u32_le();
-        ensure!(
-            header_size == 24,
-            "unexpected root header size {header_size}"
-        );
-        version = p.get_u32_le();
-        ensure!(
-            version == 1 || version == 2,
-            "unsupported root version {version}"
-        );
-        let total_file_count = p.get_u32_le();
-        let named_file_count = p.get_u32_le();
-        p.advance(4); // reserved
-        interleave = false;
-        can_skip = total_file_count != named_file_count;
-    } else {
-        interleave = true;
-        can_skip = false;
-    }
+    ensure!(p.remaining() >= 24, "truncated root header");
+    ensure!(p[..4] == *b"TSFM", "unsupported root format");
+    p.advance(4);
+    let header_size = p.get_u32_le();
+    ensure!(
+        header_size == 24,
+        "unexpected root header size {header_size}"
+    );
+    let version = p.get_u32_le();
+    ensure!(
+        version == 1 || version == 2,
+        "unsupported root version {version}"
+    );
+    let total_file_count = p.get_u32_le();
+    let named_file_count = p.get_u32_le();
+    p.advance(4); // reserved
+    let can_skip = total_file_count != named_file_count;
+    let block_header_size = if version == 1 { 12 } else { 17 };
     let mut result = Vec::<RootData>::new();
     while p.has_remaining() {
-        let block_header_size = if interleave || version == 1 { 12 } else { 17 };
         ensure!(
             p.remaining() >= block_header_size,
             "truncated root cas block"
         );
         let num_records: usize = p.get_u32_le().try_into()?;
-        let content_flags = if interleave || version == 1 {
+        let content_flags = if version == 1 {
             let flags = p.get_u32_le();
             let _locale_flags = p.get_u32_le();
             flags
@@ -92,23 +83,16 @@ pub(crate) fn parse(data: &[u8]) -> Result<Root> {
             fdids.push(FileDataID(fdid.try_into()?))
         }
         let mut content_keys = Vec::<ContentKey>::new();
+        for _ in 0..num_records {
+            content_keys.push(ContentKey(p.get_u128()));
+        }
         let mut name_hashes = Vec::<Option<u64>>::new();
-        if interleave {
+        if !can_skip || content_flags & 0x10000000 == 0 {
             for _ in 0..num_records {
-                content_keys.push(ContentKey(p.get_u128()));
                 name_hashes.push(Some(p.get_u64_le()));
             }
         } else {
-            for _ in 0..num_records {
-                content_keys.push(ContentKey(p.get_u128()));
-            }
-            if !can_skip || content_flags & 0x10000000 == 0 {
-                for _ in 0..num_records {
-                    name_hashes.push(Some(p.get_u64_le()));
-                }
-            } else {
-                name_hashes.resize(num_records, None);
-            }
+            name_hashes.resize(num_records, None);
         }
         for i in 0..num_records {
             result.push(RootData {
