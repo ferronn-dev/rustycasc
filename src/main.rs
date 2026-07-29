@@ -324,27 +324,26 @@ async fn process(product: &str) -> Result<()> {
         Ok(bytes)
     };
     let fetch_fdid = |fdid| async move { fetch_content(root.f2c(fdid)?).await };
+    let fetch_name = |name: &'static str| async move { fetch_content(root.n2c(name)?).await };
     let fdids = db2::strings(&fetch_fdid(FileDataID(1375801)).await?)?
         .into_iter()
         .map(|(k, v)| (v.join("").to_lowercase(), FileDataID(k)))
         .collect::<HashMap<String, FileDataID>>();
+    let mut stack = Vec::<String>::new();
+    for listfile in [
+        "Interface\\ui-toc-list.txt",
+        "Interface\\ui-gen-addon-list.txt",
+    ] {
+        for line in from_utf8(&fetch_name(listfile).await?)?.lines() {
+            let line = line.trim();
+            if !line.is_empty() && root.n2c(line).is_ok() {
+                stack.push(line.to_string());
+            }
+        }
+    }
     tokio::fs::write(
         format!("zips/{product}.zip"),
         to_zip_archive_bytes({
-            let mut stack: Vec<String> = db2::strings(&fetch_fdid(FileDataID(1267335)).await?)?
-                .into_values()
-                .flatten()
-                .chain(["Interface\\FrameXML\\".to_string()])
-                .filter_map(|s| {
-                    let dirname = s[..s.len() - 1].split('\\').next_back()?;
-                    let toc1 = format!("{s}{dirname}_{product}.toc");
-                    let toc2 = format!("{s}{dirname}.toc");
-                    root.n2c(&toc1)
-                        .and(Ok(toc1))
-                        .or_else(|_| root.n2c(&toc2).and(Ok(toc2)))
-                        .ok()
-                })
-                .collect();
             let pb = &indicatif::ProgressBar::new(stack.len() as u64);
             let mut result = HashMap::<String, Vec<u8>>::new();
             while let Some(file) = stack.pop() {
